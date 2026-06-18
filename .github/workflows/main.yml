@@ -1,7 +1,7 @@
 name: Ultimate Auto iOS Landscape Builder
 
 on:
-  push:
+ # push:
     branches: [ "main" ]
   workflow_dispatch:
 
@@ -10,7 +10,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    # ১. গিটহাব থেকে আপনার আপলোড করা ভিডিও ফাইলটি রানারে নিয়ে আসা
+    # ১. গিটহাব থেকে আপনার আপলোড করা ভিডিও এবং সাউন্ড ফাইল রানারে নিয়ে আসা
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -18,7 +18,7 @@ jobs:
     - name: Install XcodeGen
       run: brew install xcodegen
 
-    # ৩. ক্লাউডে ফোল্ডার তৈরি করে গেমিং অ্যানিমেশন সাপোর্টেড কোড রাইট করা
+    # ৩. ক্লাউডে ফোল্ডার তৈরি করে স্লো-গ্লো এবং সাউন্ড সাপোর্টেড কোড রাইট করা
     - name: Create App Source Files
       run: |
         mkdir -p GameApp
@@ -37,7 +37,35 @@ jobs:
         }
         EOF
 
-        # (খ) ভিডিও প্লেয়ার ফাইল (স্টপ লজিকসহ)
+        # (খ) সাউন্ড প্লে করার জন্য প্রফেশনাল সাউন্ড ম্যানেজার ক্লাস
+        cat << 'EOF' > GameApp/SoundManager.swift
+        import AVFoundation
+
+        class SoundManager {
+            static let instance = SoundManager()
+            var audioPlayer: AVAudioPlayer?
+
+            func playClickSound() {
+                // গিটহাবে আপলোড করা click.mp3 ফাইলটি প্রজেক্ট বান্ডেল থেকে খুঁজে বের করা
+                guard let path = Bundle.main.path(forResource: "click", ofType: "mp3") else {
+                    print("সাউন্ড ফাইলটি খুঁজে পাওয়া যায়নি!")
+                    return
+                }
+                
+                let url = URL(fileURLWithPath: path)
+                
+                do {
+                    audioPlayer = try AVAudioPlayer(contentsOf: url)
+                    audioPlayer?.prepareToPlay()
+                    audioPlayer?.play()
+                } catch {
+                    print("সাউন্ড প্লে করতে ত্রুটি হয়েছে: \(error.localizedDescription)")
+                }
+            }
+        }
+        EOF
+
+        # (গ) ভিডিও প্লেয়ার ফাইল (স্টপ লজিকসহ)
         cat << 'EOF' > GameApp/LoopingVideoPlayer.swift
         import SwiftUI
         import AVFoundation
@@ -104,47 +132,49 @@ jobs:
         }
         EOF
 
-        # (গ) ইউজার ইন্টারফেস (গ্লোয়িং ও ব্লিংকিং বটম টেক্সটসহ ContentView)
+        # (ঘ) ইউজার ইন্টারফেস (স্লো গ্লো এবং সাউন্ড ট্রিগারসহ ContentView)
         cat << 'EOF' > GameApp/ContentView.swift
         import SwiftUI
 
         struct ContentView: View {
             @State private var isGameZoneActive = false
-            @State private var isGlowing = false // লাইটের মতো জ্বলা-নিভার স্টেট ভেরিয়েবল
+            @State private var isGlowing = false
             
             var body: some View {
                 ZStack {
                     if !isGameZoneActive {
-                        // --- স্ক্রিন ১: ব্যাকগ্রাউন্ড ভিডিও এবং নিচে গ্লোয়িং টেক্সট ---
                         ZStack {
                             LoopingVideoPlayer(isGameZoneActive: $isGameZoneActive)
                                 .ignoresSafeArea()
                             
                             VStack {
-                                Spacer() // এটি লেখাটিকে স্ক্রিনের একদম নিচে (বটমে) পাঠিয়ে দেবে
+                                Spacer()
                                 
-                                Text("TAP TO SCREEN") // গেমিং লুকের জন্য সব বড় হাতের অক্ষর করা হয়েছে
-                                    .font(.system(size: 16, weight: .bold, design: .monospaced)) // ছোট সাইজ ও গেমিং ফন্ট
+                                Text("TAP TO SCREEN")
+                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
                                     .foregroundColor(.white)
-                                    .tracking(4) // প্রতিটি অক্ষরের মাঝে স্পেস বা গ্যাপ
-                                    .opacity(isGlowing ? 1.0 : 0.2) // সাদা লাইটের মতো জ্বলবে ও নিভবে
-                                    .shadow(color: .white.opacity(0.8), radius: isGlowing ? 10 : 2) // গ্লো ইফেক্ট
+                                    .tracking(4)
+                                    .opacity(isGlowing ? 1.0 : 0.15) // গ্লো ইফেক্ট আরও গভীর করা হয়েছে
+                                    .shadow(color: .white.opacity(0.8), radius: isGlowing ? 12 : 1)
                                     .onAppear {
-                                        // স্ক্রিন চালু হওয়ামাত্র অটোমেটিক লুপ অ্যানিমেশন শুরু হবে (Duration: 0.8 সেকেন্ড)
-                                        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                        // অ্যানিমেশন ডিউরেশন ০.৮ থেকে বাড়িয়ে ১.৮ সেকেন্ড করা হয়েছে (অনেক স্লো ও স্মুথ হবে)
+                                        withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                                             isGlowing = true
                                         }
                                     }
                                     .onTapGesture {
+                                        // ১. টাচ করার সাথে সাথে কাস্টম mp3 সাউন্ড প্লে হবে
+                                        SoundManager.instance.playClickSound()
+                                        
+                                        // ২. সামান্য ট্রানজিশন অ্যানিমেশন দিয়ে ২য় স্ক্রিনে যাবে
                                         withAnimation(.easeInOut(duration: 0.3)) {
                                             isGameZoneActive = true
                                         }
                                     }
                             }
-                            .padding(.bottom, 35) // ল্যান্ডস্কেপ স্ক্রিনের নিচের বর্ডার থেকে নিরাপদ দূরত্ব
+                            .padding(.bottom, 35)
                         }
                     } else {
-                        // --- স্ক্রিন ২: সম্পূর্ণ আলাদা ব্ল্যাক স্ক্রিন ও গেম জোন ---
                         GameZoneView()
                     }
                 }
@@ -174,7 +204,7 @@ jobs:
         }
         EOF
 
-        # (ঘ) ল্যান্ডস্কেপ লকড Info.plist তৈরি
+        # (ঙ) ল্যান্ডস্কেপ লকড Info.plist তৈরি
         cat << 'EOF' > GameApp/Info.plist
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -208,14 +238,15 @@ jobs:
         </plist>
         EOF
 
-    # ৪. আপনার আপলোড করা ভিডিও ফাইলটি অ্যাপ ফোল্ডারে কপি করা
-    - name: Move Video to App Folder
+    # ৪. আপনার আপলোড করা ভিডিও এবং সাউন্ড ফাইল অ্যাপ ফোল্ডারে কপি করা
+    - name: Move Assets to App Folder
       run: |
-        if [ -f "background.mp4" ]; then
+        if [ -f "background.mp4" ] && [ -f "click.mp3" ]; then
           cp background.mp4 GameApp/
-          echo "ভিডিও ফাইলটি সফলভাবে অ্যাপে যুক্ত করা হয়েছে।"
+          cp click.mp3 GameApp/
+          echo "ভিডিও এবং সাউন্ড ফাইল সফলভাবে অ্যাপে যুক্ত করা হয়েছে।"
         else
-          echo "ERROR: background.mp4 ফাইলটি পাওয়া যায়নি!"
+          echo "ERROR: background.mp4 অথবা click.mp3 ফাইলটি মেইন ফোল্ডারে পাওয়া যায়নি!"
           exit 1
         fi
 
