@@ -1,0 +1,180 @@
+name: Ultimate Auto iOS Builder
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  generate-and-build:
+    runs-on: macos-latest
+
+    steps:
+    # ১. গিটহাব থেকে আপনার আপলোড করা ভিডিও ফাইলটি রানারে নিয়ে আসা
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # ২. এক্সকোড প্রজেক্ট তৈরি করার জন্য XcodeGen টুল ইনস্টল করা
+    - name: Install XcodeGen
+      run: brew install xcodegen
+
+    # ৩. ক্লাউডে ফোল্ডার তৈরি করে সব সুইফট কোড ফাইল একবারে রাইট (Write) করা
+    - name: Create App Source Files
+      run: |
+        mkdir -p GameApp
+        
+        # (ক) অ্যাপের মেইন এন্ট্রি পয়েন্ট ফাইল তৈরি (@main)
+        cat << 'EOF' > GameApp/GameAppApp.swift
+        import SwiftUI
+
+        @main
+        struct GameAppApp: App {
+            var body: some Scene {
+                WindowGroup {
+                    ContentView()
+                }
+            }
+        }
+        EOF
+
+        # (খ) ভিডিও প্লেয়ার হেল্পার ফাইল তৈরি
+        cat << 'EOF' > GameApp/LoopingVideoPlayer.swift
+        import SwiftUI
+        import AVFoundation
+
+        struct LoopingVideoPlayer: UIViewRepresentable {
+            func makeUIView(context: Context) -> UIView {
+                let view = UIView(frame: .zero)
+                
+                guard let path = Bundle.main.path(forResource: "background", ofType: "mp4") else {
+                    print("ভিডিও ফাইলটি পাওয়া যায়নি!")
+                    return view
+                }
+                
+                let url = URL(fileURLWithPath: path)
+                let player = AVPlayer(url: url)
+                let playerLayer = AVPlayerLayer(player: player)
+                
+                playerLayer.videoGravity = .resizeAspectFill
+                playerLayer.frame = UIScreen.main.bounds
+                view.layer.addSublayer(playerLayer)
+                
+                NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { _ in
+                    player.seek(to: .zero)
+                    player.play()
+                }
+                
+                player.play()
+                return view
+            }
+            
+            func updateUIView(_ uiView: UIView, context: Context) {}
+        }
+        EOF
+
+        # (গ) ইউজার ইন্টারফেস (ContentView) ফাইল তৈরি
+        cat << 'EOF' > GameApp/ContentView.swift
+        import SwiftUI
+
+        struct ContentView: View {
+            @State private var isGameZoneActive = false
+            
+            var body: some View {
+                ZStack {
+                    if !isGameZoneActive {
+                        ZStack {
+                            LoopingVideoPlayer()
+                                .ignoresSafeArea()
+                            
+                            VStack {
+                                Text("Tap to Screen")
+                                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(Color.black.opacity(0.3))
+                                    .cornerRadius(12)
+                                    .onTapGesture {
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            isGameZoneActive = true
+                                        }
+                                    }
+                                Spacer()
+                            }
+                            .padding(.top, 60)
+                        }
+                    } else {
+                        Color.black
+                            .ignoresSafeArea()
+                            .overlay(
+                                Text("Welcome to Your Game Zone")
+                                    .font(.system(size: 28, weight: .black, design: .monospaced))
+                                    .foregroundColor(.green)
+                                    .multilineTextAlignment(.center)
+                                    .padding()
+                            )
+                    }
+                }
+            }
+        }
+        EOF
+
+    # ৪. আপনার আপলোড করা ভিডিও ফাইলটি অ্যাপ ফোল্ডারে কপি করা
+    - name: Move Video to App Folder
+      run: |
+        if [ -f "background.mp4" ]; then
+          cp background.mp4 GameApp/
+          echo "ভিডিও ফাইলটি সফলভাবে অ্যাপে যুক্ত করা হয়েছে।"
+        else
+          echo "ERROR: আপনার গিটহাবের মেইন ফোল্ডারে background.mp4 ফাইলটি পাওয়া যায়নি!"
+          exit 1
+        fi
+
+    # ৫. XcodeGen এর জন্য কনফিগারেশন (project.yml) তৈরি করা
+    - name: Create XcodeGen Specification
+      run: |
+        cat << 'EOF' > project.yml
+        name: GameApp
+        options:
+          bundleIdPrefix: com.automation
+        targets:
+          GameApp:
+            type: application
+            platform: iOS
+            deploymentTarget: "15.0"
+            sources: [GameApp]
+            settings:
+              INFOPLIST_KEY_UILaunchScreen_Generation: true
+              INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        EOF
+
+    # ৬. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
+    - name: Generate Xcode Project File
+      run: xcodegen generate
+
+    # ৭. অ্যাপল সার্টিফিকেট ছাড়া প্রজেক্টটি কম্পাইল করা (Unsigned Build)
+    - name: Compile iOS App (No-Sign)
+      run: |
+        xcodebuild clean build \
+          -project "GameApp.xcodeproj" \
+          -scheme "GameApp" \
+          -sdk iphoneos \
+          -configuration Release \
+          -derivedDataPath build_output \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          PROVISIONING_PROFILE_SPECIFIER=""
+
+    # ৮. বিল্ড হওয়া ফাইলকে অফিসিয়াল Unsigned .ipa ফরম্যাটে প্যাকেজ করা
+    - name: Package App into Unsigned IPA
+      run: |
+        mkdir -p Payload
+        cp -r build_output/Build/Products/Release-iphoneos/GameApp.app Payload/
+        zip -r GameApp.ipa Payload
+
+    # ৯. তৈরি হওয়া ফাইনাল .ipa ফাইলটি গিটহাবে আপলোড করা
+    - name: Upload Final IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: GameZone-App
+        path: GameApp.ipa
