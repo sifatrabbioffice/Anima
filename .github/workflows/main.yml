@@ -14,11 +14,11 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # ২. এক্সকোড প্রজেক্ট তৈরি করার জন্য XcodeGenツール ইনস্টল করা
+    # ২. এক্সকোড প্রজেক্ট তৈরি করার জন্য XcodeGen টুল ইনস্টল করা
     - name: Install XcodeGen
       run: brew install xcodegen
 
-    # ৩. ক্লাউডে ফোল্ডার তৈরি করে সব ল্যান্ডস্কেপ সাপোর্টেড সুইফট কোড ও কনফিগারেশন রাইট করা
+    # ৩. ক্লাউডে ফোল্ডার তৈরি করে সব ল্যান্ডস্কেপ ও ভিডিও-স্টপ সাপোর্টেড কোড রাইট করা
     - name: Create App Source Files
       run: |
         mkdir -p GameApp
@@ -37,12 +37,58 @@ jobs:
         }
         EOF
 
-        # (খ) ল্যান্ডস্কেপ রেসপন্সিভ ভিডিও প্লেয়ার হেল্পার ফাইল তৈরি (Professional Subclassing)
+        # (খ) ভিডিও প্লেয়ার ফাইল (ট্যাপ করলে সম্পূর্ণ বন্ধ হওয়ার লজিকসহ)
         cat << 'EOF' > GameApp/LoopingVideoPlayer.swift
         import SwiftUI
         import AVFoundation
 
-        // ল্যান্ডস্কেপ স্ক্রিন সাইজের সাথে ভিডিও ফ্রেম নিখুঁতভাবে মেলানোর জন্য কাস্টম UIView
+        struct LoopingVideoPlayer: UIViewRepresentable {
+            // ১ নম্বর স্ক্রিন থেকে অ্যাক্টিভ স্টেট ট্র্যাক করার বাইন্ডিং ভেরিয়েবল
+            @Binding var isGameZoneActive: Bool
+            
+            // প্লেয়ার অবজেক্টটিকে ধরে রাখার জন্য কোঅর্ডিনেটর ক্লাস
+            class Coordinator: NSObject {
+                var player: AVPlayer?
+            }
+            
+            func makeCoordinator() -> Coordinator {
+                return Coordinator()
+            }
+
+            func makeUIView(context: Context) -> UIView {
+                guard let path = Bundle.main.path(forResource: "background", ofType: "mp4") else {
+                    print("ভিডিও ফাইলটি পাওয়া যায়নি!")
+                    return UIView()
+                }
+                
+                let url = URL(fileURLWithPath: path)
+                let player = AVPlayer(url: url)
+                context.coordinator.player = player // কোঅর্ডিনেটরে প্লেয়ার সেভ করা হলো
+                
+                let view = VideoPlayerUIView(player: player)
+                
+                // ভিডিও শেষ হলে আবার লুপ করার নোটিফিকেশন
+                NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { _ in
+                    if !isGameZoneActive {
+                        player.seek(to: .zero)
+                        player.play()
+                    }
+                }
+                
+                player.play()
+                return view
+            }
+            
+            // স্ক্রিন স্টেট পরিবর্তন হলে এই ফাংশনটি স্বয়ংক্রিয়ভাবে রান হয়
+            func updateUIView(_ uiView: UIView, context: Context) {
+                if isGameZoneActive {
+                    // ভিডিও এবং সাউন্ড একবারে পুরোপুরি বন্ধ করে দেওয়া হলো
+                    context.coordinator.player?.pause()
+                    context.coordinator.player = nil
+                }
+            }
+        }
+
         class VideoPlayerUIView: UIView {
             private var playerLayer: AVPlayerLayer?
             
@@ -54,42 +100,16 @@ jobs:
                 self.playerLayer = playerLayer
             }
             
-            required init?(coder: NSCoder) {
-                fatalError("init(coder:) has not been implemented")
-            }
+            required init?(coder: NSCoder) { fatalError() }
             
             override func layoutSubviews() {
                 super.layoutSubviews()
-                // স্ক্রিন ল্যান্ডস্কেপ হওয়ার সাথে সাথে ভিডিওর বাউন্ডস অ্যাডজাস্ট হবে
                 playerLayer?.frame = self.bounds
             }
         }
-
-        struct LoopingVideoPlayer: UIViewRepresentable {
-            func makeUIView(context: Context) -> UIView {
-                guard let path = Bundle.main.path(forResource: "background", ofType: "mp4") else {
-                    print("ভিডিও ফাইলটি পাওয়া যায়নি!")
-                    return UIView()
-                }
-                
-                let url = URL(fileURLWithPath: path)
-                let player = AVPlayer(url: url)
-                let view = VideoPlayerUIView(player: player)
-                
-                NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { _ in
-                    player.seek(to: .zero)
-                    player.play()
-                }
-                
-                player.play()
-                return view
-            }
-            
-            func updateUIView(_ uiView: UIView, context: Context) {}
-        }
         EOF
 
-        # (গ) ল্যান্ডস্কেপ ইউজার ইন্টারফেস (ContentView) ফাইল তৈরি
+        # (গ) ইউজার ইন্টারফেস এবং ভবিষ্যৎ ফাংশনাল স্ক্রিন এরিয়া
         cat << 'EOF' > GameApp/ContentView.swift
         import SwiftUI
 
@@ -99,8 +119,10 @@ jobs:
             var body: some View {
                 ZStack {
                     if !isGameZoneActive {
+                        // --- স্ক্রিন ১: ব্যাকগ্রাউন্ড ভিডিও এবং উপরে টেক্সট ---
                         ZStack {
-                            LoopingVideoPlayer()
+                            // প্লেয়ারে বাইন্ডিং পাঠানো হলো
+                            LoopingVideoPlayer(isGameZoneActive: $isGameZoneActive)
                                 .ignoresSafeArea()
                             
                             VStack {
@@ -115,27 +137,44 @@ jobs:
                                             isGameZoneActive = true
                                         }
                                     }
-                                Spacer() // ল্যান্ডস্কেপেও লেখাটিকে টপে ধরে রাখবে
+                                Spacer()
                             }
-                            .padding(.top, 30) // ল্যান্ডস্কেপ মোডের জন্য মার্জিন অ্যাডজাস্টমেন্ট
+                            .padding(.top, 30)
                         }
                     } else {
-                        Color.black
-                            .ignoresSafeArea()
-                            .overlay(
-                                Text("Welcome to Your Game Zone")
-                                    .font(.system(size: 32, weight: .black, design: .monospaced))
-                                    .foregroundColor(.green)
-                                    .multilineTextAlignment(.center)
-                                    .padding()
-                            )
+                        // --- স্ক্রিন ২: সম্পূর্ণ আলাদা ব্ল্যাক স্ক্রিন ও অন্য ফাংশনাল এরিয়া ---
+                        GameZoneView()
                     }
                 }
             }
         }
+
+        // পেশাদার আর্কিটেকচার: আপনার ভবিষ্যৎ কাজের মূল ফাংশনাল স্ক্রিন
+        struct GameZoneView: View {
+            var body: some View {
+                Color.black
+                    .ignoresSafeArea()
+                    .overlay(
+                        VStack(spacing: 25) {
+                            Text("Welcome to Your Game Zone")
+                                .font(.system(size: 32, weight: .black, design: .monospaced))
+                                .foregroundColor(.green)
+                                .multilineTextAlignment(.center)
+                            
+                            // > নোট: আপনার ভবিষ্যৎ গেমের বাটন, স্কোরবোর্ড বা অন্য যেকোনো ফাংশনের কাজ এই নিচের এরিয়াতে কোড করতে পারবেন।
+                            Text("[ আপনার অন্যান্য ফাংশনাল কাজ এবং কোড এখানে যুক্ত হবে ]")
+                                .font(.system(size: 16, weight: .medium, design: .default))
+                                .foregroundColor(.gray)
+                                .padding()
+                                .background(Color.white.opacity(0.05))
+                                .cornerRadius(8)
+                        }
+                    )
+            }
+        }
         EOF
 
-        # (ঘ) Info.plist তৈরি - এখানে অ্যাপটিকে অল-টাইম ল্যান্ডস্কেপ লক করা হয়েছে
+        # (ঘ) ল্যান্ডস্কেপ লকড Info.plist তৈরি
         cat << 'EOF' > GameApp/Info.plist
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
