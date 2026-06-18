@@ -175,7 +175,6 @@ jobs:
             }
         }
 
-        // ==================== [সাব-ভিউ ১: হোম স্ক্রিন কম্পোনেন্ট] ====================
         struct HomeView: View {
             @Binding var currentScreen: GameStateScreen
             @Binding var isGlowing: Bool
@@ -208,7 +207,6 @@ jobs:
             }
         }
 
-        // ==================== [সাব-ভিউ ২: বাটন মেনু হাব কম্পোনেন্ট] ====================
         struct HubMenuView: View {
             @Binding var currentScreen: GameStateScreen
             @Binding var showOptionsOverlay: Bool
@@ -254,7 +252,6 @@ jobs:
             }
         }
 
-        // ==================== [সাব-ভিউ ৩: অপশন প্যানেল ওভারলে কম্পোনেন্ট - FIXED] ====================
         struct OptionsOverlayView: View {
             @Binding var showOptionsOverlay: Bool
             @Binding var soundVolume: Double
@@ -280,7 +277,6 @@ jobs:
                         
                         Divider().background(Color.white.opacity(0.3))
                         
-                        // [FIXED]: alignment প্যামিটার সঠিকভাবে ফিক্স করা হয়েছে
                         VStack(alignment: .leading, spacing: 5) {
                             Text("AUDIO VOLUME: \(Int(soundVolume * 100))%").font(.caption).foregroundColor(.gray)
                             Slider(value: $soundVolume, in: 0...1).accentColor(.cyan)
@@ -324,77 +320,109 @@ jobs:
         }
         EOF
 
-        # (ঙ) থার্ড পেজের জন্য প্রিমিয়াম AAA এআই গেমভিউ ইঞ্জিন কোড
+        # (ঙ) থার্ড পেজের জন্য সম্পূর্ণ নতুন হাই-পারফরম্যান্স মেটাল-ক্যানভাস গেম ইঞ্জিন কোড
         cat << 'EOF' > GameApp/PremiumAAAGameEngineView.swift
         import SwiftUI
+        import Combine
+
+        // গেম অবজেক্ট মডেল স্ট্রাকচারস
+        struct SpaceLaser: Identifiable {
+            let id = UUID()
+            var position: CGPoint
+        }
+
+        struct AlienTarget: Identifiable {
+            let id = UUID()
+            var position: CGPoint
+            var speed: CGFloat
+            var radius: CGFloat
+            var isBoss: Bool
+        }
+
+        struct VisualParticle: Identifiable {
+            let id = UUID()
+            var position: CGPoint
+            var velocity: CGSize
+            var color: Color
+            var alpha: CGFloat
+            var size: CGFloat
+        }
 
         struct PremiumAAAGameEngineView: View {
             @Binding var currentScreen: GameStateScreen
-            
             let graphicsQuality: String
             let soundVolume: Double
             let hapticIntensity: Double
-            
-            @State private var playerHP: CGFloat = 100.0
-            @State private var bossHP: CGFloat = 300.0
-            @State private var ultimateGauge: CGFloat = 0.0
-            @State private var playerPositionX: CGFloat = 0.0
-            @State private var playerCombo = 0
-            
-            @State private var aiStatusText = "AI Status: Scanning player stance..."
-            @State private var combatDialogue = "SYS LOGIN: Welcome Operator. The Rogue AI Core has taken full control of the city mainframe. Move and strike before signature trace completes."
-            @State private var isPlayerAttacking = false
-            @State private var isBossDashing = false
-            @State private var isMatchEnded = false
-            @State private var userWon = false
+
+            // স্টারশিপ স্টেট ইঞ্জিন
+            @State private var shipPosition = CGPoint(x: 200, y: 260)
+            @State private var score = 0
+            @State private var shipShield: CGFloat = 100.0
+            @State private var comboStreak = 0
+            @State private var isGameOver = false
+
+            // ক্যানভাস রেন্ডারিং অ্যারে লুপস
+            @State private var activeLasers: [SpaceLaser] = []
+            @State private var activeTargets: [AlienTarget] = []
+            @State private var activeParticles: [VisualParticle] = []
+            @State private var spaceDust: [CGPoint] = []
+
+            // ৬০ এফপিএস টাইমার ড্রাইভার
+            @State private var gameTimer = Timer.publish(every: 1/60, on: .main, in: .common).autoconnect()
+            @State private var targetSpawnCounter = 0
 
             var body: some View {
                 HStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("🎮 CONSOLE INTERFACE")
-                                .font(.system(size: 11, weight: .black, design: .monospaced))
-                                .foregroundColor(.cyan)
-                            Spacer()
-                            Text(graphicsQuality.uppercased()).font(.system(size: 9, weight: .bold)).foregroundColor(.green)
-                        }
+                    
+                    // [বাম পাশ]: সাইবারপঙ্ক ডায়াগনস্টিক অ্যান্ড কন্ট্রোল প্যানেল মেট্রিক্স
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("📡 CORE MATRIX DIAG")
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .foregroundColor(.cyan)
                         
                         Divider().background(Color.white.opacity(0.2))
-                        
+
+                        Group {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("PLAYER SCORE").font(.system(size: 9, weight: .bold)).foregroundColor(.gray)
+                                Text("\(score)").font(.system(size: 22, weight: .black, design: .monospaced)).foregroundColor(.green)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("COMBO MULTIPLIER").font(.system(size: 9, weight: .bold)).foregroundColor(.gray)
+                                Text("x\(comboStreak)").font(.system(size: 16, weight: .black, design: .monospaced)).foregroundColor(.yellow)
+                            }
+                        }
+
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("🧠 BOSS AI INTELLIGENCE SYSTEM")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundColor(.orange)
-                            Text(aiStatusText)
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(.yellow)
+                            Text("SHIELD DEFENSE: \(Int(shipShield))%").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.cyan)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.cyan.opacity(0.15))
+                                    Capsule().fill(LinearGradient(colors: [.cyan, .blue], startPoint: .leading, endPoint: .trailing))
+                                        .frame(width: max(0, (shipShield / 100.0) * geo.size.width))
+                                }
+                            }.frame(height: 7)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("ENGINE GPU ENGINE").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundColor(.orange)
+                            Text("MODE: METAL CANVAS\nFPS: 60Hz TRIPLE-A\nQUALITY: \(graphicsQuality.uppercased())")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.gray)
                                 .padding(6)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.orange.opacity(0.1))
+                                .background(Color.white.opacity(0.03))
                                 .cornerRadius(5)
                         }
-                        
-                        Text("STORY LINE & LIVE DIALOGUE")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.gray)
-                        
-                        ScrollView {
-                            Text(combatDialogue)
-                                .font(.system(size: 11, weight: .regular, design: .default))
-                                .foregroundColor(.white.opacity(0.85))
-                                .padding(8)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .background(Color.white.opacity(0.02))
-                                .cornerRadius(6)
-                        }
-                        
+
                         Spacer()
-                        
+
                         Button(action: {
                             SoundManager.instance.playClickSound()
                             withAnimation { currentScreen = .page2HubMenu }
                         }) {
-                            Text("ABORT MISSION (EXIT)")
+                            Text("ABORT AND LEAVE")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(.red)
                                 .frame(maxWidth: .infinity)
@@ -404,219 +432,236 @@ jobs:
                                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.red.opacity(0.3), lineWidth: 1))
                         }
                     }
-                    .padding(12)
-                    .frame(width: 260)
-                    .background(Color(white: 0.03))
+                    .padding(14)
+                    .frame(width: 200)
+                    .background(Color(white: 0.02))
                     .overlay(Rectangle().frame(width: 1).foregroundColor(.white.opacity(0.08)), alignment: .trailing)
-                    
+
+                    // [ডান পাশ]: হাই-পারফরম্যান্স মেটাল এসিলারেটেড গেমপ্লে ক্যানভাস ক্যানভাস
                     ZStack {
                         Color.black.ignoresSafeArea()
                         
-                        LinearGradient(colors: [.cyan.opacity(graphicsQuality == "Ultra" ? 0.2 : 0.02), .black], startPoint: .top, endPoint: .bottom)
-                            .ignoresSafeArea()
-                        
-                        VStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack {
-                                    Text("🤖 PROTOCOL OVERLORD OVERMIND v4.0")
-                                        .font(.system(size: 11, weight: .black, design: .monospaced))
-                                        .foregroundColor(.red)
-                                    Spacer()
-                                    Text("\(Int(bossHP)) HP").font(.caption).foregroundColor(.gray)
-                                }
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        Capsule().fill(Color.red.opacity(0.15))
-                                        Capsule().fill(LinearGradient(colors: [.red, .purple], startPoint: .leading, endPoint: .trailing))
-                                            .frame(width: max(0, (bossHP / 300.0) * geo.size.width))
-                                    }
-                                }.frame(height: 8)
+                        // ৬০ এফপিএস রিয়েল-টাইম ড্রয়িং মেকানিজম
+                        Canvas { context, size in
+                            // ১. ব্যাকগ্রাউন্ড স্পেস ডাস্ট রেন্ডারিং
+                            for pt in spaceDust {
+                                context.fill(Path(ellipseIn: CGRect(x: pt.x, y: pt.y, width: 2, height: 2)), with: .color(.white.opacity(0.3)))
                             }
-                            .padding(.horizontal, 15)
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 80) {
-                                VStack(spacing: 2) {
-                                    Text("⚡️ COMBO x\(playerCombo)").font(.system(size: 10, weight: .bold)).foregroundColor(.yellow).opacity(playerCombo > 0 ? 1 : 0)
-                                    Text("👤")
-                                        .font(.system(size: 48))
-                                        .offset(x: playerPositionX + (isPlayerAttacking ? 40 : 0))
-                                        .shadow(color: .cyan, radius: isPlayerAttacking ? 20 : 2)
-                                }
-                                
-                                Text("VS")
-                                    .font(.system(size: 14, weight: .black, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.15))
-                                
-                                Text("👹")
-                                    .font(.system(size: 52))
-                                    .offset(x: isBossDashing ? -30 : 0)
-                                    .scaleEffect(bossHP > 0 ? 1.0 : 0.0)
-                                    .rotationEffect(.degrees(bossHP > 0 ? 0 : 180))
-                                    .shadow(color: .red, radius: isBossDashing ? 25 : 5)
-                            }
-                            .animation(.spring(response: 0.22, dampingFraction: 0.45), value: playerPositionX)
-                            .animation(.spring(response: 0.22, dampingFraction: 0.45), value: isPlayerAttacking)
-                            .animation(.easeInOut(duration: 0.2), value: isBossDashing)
-                            
-                            Spacer()
-                            
-                            VStack(spacing: 8) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text("💖 INTERACTION CORE HP: \(Int(playerHP))%")
-                                            .font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.cyan)
-                                        GeometryReader { geo in
-                                            ZStack(alignment: .leading) {
-                                                Capsule().fill(Color.cyan.opacity(0.2))
-                                                Capsule().fill(Color.cyan)
-                                                    .frame(width: max(0, (playerHP / 100.0) * geo.size.width))
-                                            }
-                                        }.frame(height: 6)
-                                    }
-                                    
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text("🔥 ULTIMATE AWAKENING: \(Int(ultimateGauge))%")
-                                            .font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.yellow)
-                                        GeometryReader { geo in
-                                            ZStack(alignment: .leading) {
-                                                Capsule().fill(Color.yellow.opacity(0.2))
-                                                Capsule().fill(Color.yellow)
-                                                    .frame(width: max(0, (ultimateGauge / 100.0) * geo.size.width))
-                                            }
-                                        }.frame(height: 6)
-                                    }.frame(width: 160)
-                                }
-                                .padding(.horizontal, 5)
-                                
-                                HStack(spacing: 12) {
-                                    Button(action: {
-                                        SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
-                                        withAnimation { playerPositionX = playerPositionX == 0 ? -25 : 0 }
-                                        combatDialogue = "► [TACTICAL MANEUVER] You dashed sideways to break AI targeting line.\n" + combatDialogue
-                                    }) {
-                                        ActionControlPad(icon: "arrow.left.and.right.righttriangle.left.righttriangle.right", label: "TACTICAL DASH", sub: "Evade Attack", color: .purple)
-                                    }
-                                    
-                                    Button(action: { executeAdvancedStrike(style: "PLASMA GUN BURST", dmg: 20, isUlt: false) }) {
-                                        ActionControlPad(icon: "scope", label: "PLASMA BLAST", sub: "Ranged Fire", color: .cyan)
-                                    }.disabled(isMatchEnded)
-                                    
-                                    Button(action: { executeAdvancedStrike(style: "LIGHTNING MELEE SWORD", dmg: 45, isUlt: false) }) {
-                                        ActionControlPad(icon: "bolt.shield.fill", label: "LIGHTNING BLADE", sub: "+25% Ult Charge", color: .orange)
-                                    }.disabled(isMatchEnded)
-                                    
-                                    Button(action: { executeAdvancedStrike(style: "QUANTUM AWAKENING NUKE", dmg: 110, isUlt: true) }) {
-                                        ActionControlPad(icon: "shifter.fill", label: "ULTIMATE STRIKE", sub: "Requires 100% Ult", color: ultimateGauge >= 100 ? .yellow : .gray)
-                                    }.disabled(ultimateGauge < 100 || isMatchEnded)
-                                }
-                            }
-                            .padding(10)
-                            .background(Color.white.opacity(0.02))
-                            .cornerRadius(12)
-                        }
-                        .padding(12)
-                        
-                        if isMatchEnded {
-                            Color.black.opacity(0.95).ignoresSafeArea()
-                            VStack(spacing: 15) {
-                                Text(userWon ? "MISSION ACCOMPLISHED" : "CORE DEFEAT: DISCONNECTED")
-                                    .font(.system(size: 26, weight: .black, design: .monospaced))
-                                    .foregroundColor(userWon ? .green : .red)
-                                    .shadow(color: userWon ? .green : .red, radius: 10)
-                                
-                                Text(userWon ? "The Rogue Overlord has been successfully wiped from the cyber grid." : "Your matrix core was overwhelmed by the AI's predictive algorithms.")
-                                    .font(.subheadline).foregroundColor(.gray).multilineTextAlignment(.center)
-                                
-                                Button(action: { restartConsoleEngine() }) {
-                                    Text("RESPAWN INSIDE MATRIX")
-                                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.white)
-                                        .padding(.vertical, 10)
-                                        .padding(.horizontal, 25)
-                                        .background(userWon ? Color.green : Color.red)
-                                        .cornerRadius(8)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            private func executeAdvancedStrike(style: String, dmg: CGFloat, isUlt: Bool) {
-                isPlayerAttacking = true
-                SoundManager.instance.playClickSound()
-                SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
-                
-                if isUlt { ultimateGauge = 0 } else { ultimateGauge = min(100, ultimateGauge + 25) }
-                
-                bossHP = max(0, bossHP - dmg)
-                playerCombo += 1
-                
-                var roundLog = "⚔️ You executed [\(style)] doing \(Int(dmg)) damage to Overlord.\n"
-                
-                if bossHP > 0 {
-                    let aiRoll = Int.random(in: 1...3)
-                    if aiRoll == 1 {
-                        isBossDashing = true
-                        aiStatusText = "AI Status: Evading player blast vectors!"
-                        let counterDmg = CGFloat.random(in: 8...15)
-                        playerHP = max(0, playerHP - counterDmg)
-                        roundLog += "💥 Boss AI predicted your movement and counter-shot for \(Int(counterDmg)) HP.\n"
-                    } else if aiRoll == 2 {
-                        aiStatusText = "AI Status: Overclocking damage output!"
-                        let heavyDmg = CGFloat.random(in: 18...28)
-                        playerHP = max(0, playerHP - heavyDmg)
-                        roundLog += "🚨 Critical Hit! Boss AI launched Sonic Pulse for \(Int(heavyDmg)) HP.\n"
-                    } else {
-                        aiStatusText = "AI Status: Analysing current combo pattern..."
-                        roundLog += "🛡️ Boss AI absorbed part of your blow to run pattern metrics.\n"
-                    }
-                } else {
-                    userWon = true
-                    isMatchEnded = true
-                    roundLog += "🏆 CRITICAL BREAK! You completely shattered the AI Core Mainframe!\n"
-                }
-                
-                if playerHP <= 0 { isMatchEnded = true }
-                
-                combatDialogue = roundLog + "\n" + combatDialogue
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    isPlayerAttacking = false
-                    isBossDashing = false
-                }
-            }
-            
-            private func restartConsoleEngine() {
-                playerHP = 100.0
-                bossHP = 300.0
-                ultimateGauge = 0.0
-                playerCombo = 0
-                playerPositionX = 0.0
-                isMatchEnded = false
-                userWon = false
-                aiStatusText = "AI Status: Re-scanning network signatures..."
-                combatDialogue = "SYS REBOOTED: System restored. Target re-acquired. Breach the defensive matrix again."
-            }
-        }
 
-        struct ActionControlPad: View {
-            let icon: String
-            let label: String
-            let sub: String
-            let color: Color
-            var body: some View {
-                VStack(spacing: 2) {
-                    Image(systemName: icon).font(.system(size: 15)).foregroundColor(color)
-                    Text(label).font(.system(size: 9, weight: .black, design: .monospaced)).foregroundColor(.white)
-                    Text(sub).font(.system(size: 7)).foregroundColor(.gray)
+                            // ২. অ্যাক্টিভ লেজার বিম রেন্ডারিং (গ্লো ইফেক্ট সহ)
+                            for laser in activeLasers {
+                                var path = Path()
+                                path.addEllipse(in: CGRect(x: laser.position.x, y: laser.position.y, width: 14, height: 4))
+                                context.addFilter(.blur(radius: 1))
+                                context.fill(path, with: .color(.cyan))
+                            }
+
+                            // ৩. শত্রু এলিয়েন শিপ রেন্ডারিং
+                            for target in activeTargets {
+                                let rect = CGRect(x: target.position.x - target.radius, y: target.position.y - target.radius, width: target.radius * 2, height: target.radius * 2)
+                                context.draw(Text(target.isBoss ? "🛸" : "👾").font(.system(size: target.radius * 1.8)), in: rect)
+                            }
+
+                            // ৪. বিস্ফোরণের কণা নির্গমন (Particle System Rendering)
+                            for particle in activeParticles {
+                                var pPath = Path()
+                                pPath.addEllipse(in: CGRect(x: particle.position.x, y: particle.position.y, width: particle.size, height: particle.size))
+                                context.fill(pPath, with: .color(particle.color.opacity(Double(particle.alpha))))
+                            }
+
+                            // ৫. প্লেয়ারের নিজস্ব স্টারশিপ রেন্ডারিং (ক্যানভাসে ড্রয়িং)
+                            if !isGameOver {
+                                let shipRect = CGRect(x: shipPosition.x - 22, y: shipPosition.y - 22, width: 44, height: 44)
+                                context.draw(Text("🚀"), in: shipRect)
+                            }
+                        }
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    if !isGameOver {
+                                        // স্ক্রিনের বাউন্ডারির মধ্যে ড্র্যাগ পজিশন লক করা হলো
+                                        let targetY = value.location.y
+                                        shipPosition.y = max(40, min(300, targetY))
+                                    }
+                                }
+                        )
+
+                        // স্ক্রিন টাচ ইন্ডিকেটর গাইড ওভারলে
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Text("DRAG ANYWHERE ON RIGHT AREA TO MOVE SHIP UPPER/LOWER")
+                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.2))
+                                    .padding(.bottom, 6)
+                                Spacer()
+                            }
+                        }
+
+                        // গেম ওভার স্ক্রিন প্যানেল মড্যুল
+                        if isGameOver {
+                            Color.black.opacity(0.9)
+                                .ignoresSafeArea()
+                            VStack(spacing: 14) {
+                                Text("STARSHIP DESTROYED")
+                                    .font(.system(size: 24, weight: .black, design: .monospaced))
+                                    .foregroundColor(.red)
+                                    .shadow(color: .red, radius: 10)
+                                
+                                Text("Final Score Breakdown: \(score) Points Matrix Core")
+                                    .font(.caption).foregroundColor(.gray)
+
+                                Button(action: { resetGameEngine() }) {
+                                    Text("RESPAWN FIGHTER JET")
+                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.white)
+                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, 20)
+                                        .background(Color.green)
+                                        .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
                 }
-                .frame(width: 108, height: 52)
-                .background(Color.black.opacity(0.75))
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.4), lineWidth: 1))
+                .onAppear { setupSpaceDustGrid() }
+                .onReceive(gameTimer) { _ in
+                    if !isGameOver {
+                        updateGamePhysicsEngine()
+                    }
+                }
+            }
+
+            // স্টারফিল্ড গ্রিড ইনিশিয়েলাইজেশন (Background Starfield Map)
+            private func setupSpaceDustGrid() {
+                spaceDust = (0..<40).map { _ in
+                    CGPoint(x: CGFloat.random(in: 10...600), y: CGFloat.random(in: 10...340))
+                }
+            }
+
+            // গেমের ৬০ এফপিএস মেইন ফিজিক্স লুপ ক্যালকুলেটর (Core Math Loops)
+            private func updateGamePhysicsEngine() {
+                // ১. স্টারফিল্ড স্ক্রোলিং মোশন ইফেক্ট
+                for i in 0..<spaceDust.count {
+                    spaceDust[i].x -= 1.5
+                    if spaceDust[i].x < 0 { spaceDust[i].x = 620 }
+                }
+
+                // ২. অটোমেটিক গান ফায়ারিং সিস্টেম ইন্টারভাল (লেজার স্পন লুপ)
+                targetSpawnCounter += 1
+                if targetSpawnCounter % 12 == 0 {
+                    activeLasers.append(SpaceLaser(position: CGPoint(x: shipPosition.x + 20, y: shipPosition.y - 2)))
+                    if graphicsQuality == "Ultra" {
+                        SoundManager.instance.triggerHaptic(intensity: hapticIntensity * 0.3)
+                    }
+                }
+
+                // ৩. স্ক্রিন মেমরি থেকে বাউন্ডারি ক্রস করা লেজার রিলিজ করা
+                for i in 0..<activeLasers.count {
+                    activeLasers[i].position.x += 8.5
+                }
+                activeLasers.removeAll { $0.position.x > 650 }
+
+                // ৪. র্যান্ডম ইন্টারভালে শত্রু এলিয়েন শিপ স্পন করা
+                if targetSpawnCounter % 40 == 0 {
+                    let isBossTarget = Int.random(in: 1...7) == 4
+                    activeTargets.append(AlienTarget(
+                        position: CGPoint(x: 640, y: CGFloat.random(in: 30...310)),
+                        speed: CGFloat.random(in: 2.0...4.5),
+                        radius: isBossTarget ? 24 : 14,
+                        isBoss: isBossTarget
+                    ))
+                }
+
+                // ৫. শত্রুদের স্পেসশিপ বাম দিকে মুভ করানো
+                for i in 0..<activeTargets.count {
+                    activeTargets[i].position.x -= activeTargets[i].speed
+                }
+                
+                // প্লেয়ার ডিফেন্স লাইন ক্রস করলে শিল্ড এনার্জি মাইনাস
+                for target in activeTargets where target.position.x < -20 {
+                    shipShield = max(0, shipShield - 10)
+                    comboStreak = 0
+                    if shipShield <= 0 { isGameOver = true }
+                }
+                activeTargets.removeAll { $0.position.x < -20 }
+
+                // ৬. কণা নির্গমন ফিজিক্স আপডেট (Particle Lifecycle Calculations)
+                for i in 0..<activeParticles.count {
+                    activeParticles[i].position.x += activeParticles[i].velocity.width
+                    activeParticles[i].position.y += activeParticles[i].velocity.height
+                    activeParticles[i].position.y += 0.05 // গ্র্যাভিটি সিমুলেশন ডাউনফোর্স
+                    activeParticles[i].alpha -= 0.03   // ফেড আউট ইফেক্ট রেট
+                }
+                activeParticles.removeAll { $0.alpha <= 0 }
+
+                // ৭. লেজার এবং শত্রু শিপ সমূহের সংঘর্ষ লুপ (Collision Detection Matrix)
+                var burntLasers = Set<UUID>()
+                var burntTargets = Set<UUID>()
+
+                for laser in activeLasers {
+                    for target in activeTargets {
+                        let distance = sqrt(pow(laser.position.x - target.position.x, 2) + pow(laser.position.y - target.position.y, 2))
+                        if distance < (target.radius + 6) {
+                            burntLasers.insert(laser.id)
+                            burntTargets.insert(target.id)
+                            
+                            // পয়েন্ট এবং কম্বো ক্যালকুলেশন মেকানিজম
+                            comboStreak += 1
+                            score += target.isBoss ? (50 * comboStreak) : (10 * comboStreak)
+                            
+                            // হাই-স্পিড পার্টিকেল জেনারেশন কমান্ড
+                            triggerParticleExplosion(at: target.position, color: target.isBoss ? .purple : .orange)
+                            SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                        }
+                    }
+                }
+
+                // ৮. প্লেয়ার ও শত্রুর ফিজিক্যাল কোলিশন চেক
+                for target in activeTargets {
+                    let distanceToShip = sqrt(pow(shipPosition.x - target.position.x, 2) + pow(shipPosition.y - target.position.y, 2))
+                    if distanceToShip < (target.radius + 18) {
+                        burntTargets.insert(target.id)
+                        shipShield = max(0, shipShield - (target.isBoss ? 35 : 15))
+                        comboStreak = 0
+                        triggerParticleExplosion(at: shipPosition, color: .red)
+                        if shipShield <= 0 { isGameOver = true }
+                    }
+                }
+
+                // ক্লিনআপ মেমরি রিলিজ (Memory Deallocation)
+                activeLasers.removeAll { burntLasers.contains($0.id) }
+                activeTargets.removeAll { burntTargets.contains($0.id) }
+            }
+
+            // এক্সপ্লোশন জেনারেটর (High Fidelity Explosion Logic)
+            private func triggerParticleExplosion(at point: CGPoint, color: Color) {
+                let limit = graphicsQuality == "Ultra" ? 18 : 8
+                for _ in 0..<limit {
+                    let vx = CGFloat.random(in: -3.5...3.5)
+                    let vy = CGFloat.random(in: -3.5...3.5)
+                    activeParticles.append(VisualParticle(
+                        position: point,
+                        velocity: CGSize(width: vx, height: vy),
+                        color: color,
+                        alpha: 1.0,
+                        size: CGFloat.random(in: 3...6)
+                    ))
+                }
+            }
+
+            // গেম রিস্টার্ট ইঞ্জিন রিসেট মেথড
+            private func resetGameEngine() {
+                shipPosition = CGPoint(x: 200, y: 260)
+                score = 0
+                shipShield = 100.0
+                comboStreak = 0
+                isGameOver = false
+                activeLasers.removeAll()
+                activeTargets.removeAll()
+                activeParticles.removeAll()
+                targetSpawnCounter = 0
             }
         }
         EOF
@@ -715,5 +760,5 @@ jobs:
     - name: Upload Final IPA Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GameZone-AAA-Intelligence-Edition
+        name: GameZone-MetalCanvas-Edition
         path: GameApp.ipa
