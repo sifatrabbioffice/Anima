@@ -37,7 +37,7 @@ jobs:
         }
         EOF
 
-        # (খ) ভিডিও প্লেয়ার ফাইল (ট্যাপ করলে সম্পূর্ণ বন্ধ হওয়ার লজিকসহ)
+        # (খ) ভিডিও প্লেয়ার ফাইল (স্টপ লজিকসহ)
         cat << 'EOF' > GameApp/LoopingVideoPlayer.swift
         import SwiftUI
         import AVFoundation
@@ -104,44 +104,34 @@ jobs:
         }
         EOF
 
-        # (গ) ইউজার ইন্টারফেস (ব্লিঙ্কিং লাইট এবং বটম পজিশন কোড)
+        # (গ) ইউজার ইন্টারফেস (গ্লোয়িং ও ব্লিংকিং বটম টেক্সটসহ ContentView)
         cat << 'EOF' > GameApp/ContentView.swift
         import SwiftUI
 
         struct ContentView: View {
             @State private var isGameZoneActive = false
-            @State private var isGlowing = false // লাইট জ্বলা-নিভার স্টেট ট্র্যাকার
+            @State private var isGlowing = false // লাইটের মতো জ্বলা-নিভার স্টেট ভেরিয়েবল
             
             var body: some View {
                 ZStack {
                     if !isGameZoneActive {
-                        // --- স্ক্রিন ১: ব্যাকগ্রাউন্ড ভিডিও এবং নিচে অ্যানিমেটেড টেক্সট ---
+                        // --- স্ক্রিন ১: ব্যাকগ্রাউন্ড ভিডিও এবং নিচে গ্লোয়িং টেক্সট ---
                         ZStack {
                             LoopingVideoPlayer(isGameZoneActive: $isGameZoneActive)
                                 .ignoresSafeArea()
                             
                             VStack {
-                                Spacer() // এই স্পেসারটি টেক্সটকে ঠেলে স্ক্রিনের একদম নিচে (বটমে) নিয়ে যাবে
+                                Spacer() // এটি লেখাটিকে স্ক্রিনের একদম নিচে (বটমে) পাঠিয়ে দেবে
                                 
-                                Text("TAP TO SCREEN")
-                                    .font(.system(size: 24, weight: .black, design: .monospaced)) // গেমিং ফন্ট স্টাইল
+                                Text("TAP TO SCREEN") // গেমিং লুকের জন্য সব বড় হাতের অক্ষর করা হয়েছে
+                                    .font(.system(size: 16, weight: .bold, design: .monospaced)) // ছোট সাইজ ও গেমিং ফন্ট
                                     .foregroundColor(.white)
-                                    .padding(.horizontal, 35)
-                                    .padding(.vertical, 15)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color.black.opacity(0.5)) // পেছনের ভিডিও স্পষ্ট রাখার জন্য ডার্ক ব্যাকগ্রাউন্ড
-                                            .overlay(
-                                                Capsule()
-                                                    .stroke(Color.white.opacity(isGlowing ? 0.8 : 0.2), lineWidth: 2) // বর্ডারের ব্লিঙ্কিং লাইট
-                                            )
-                                    )
-                                    // সাদা লাইটের নিওন গ্লো ইফেক্ট (কম্পিউটার গ্রাফিক্স ট্রিক)
-                                    .shadow(color: .white.opacity(isGlowing ? 0.9 : 0.2), radius: isGlowing ? 15 : 2)
-                                    .opacity(isGlowing ? 1.0 : 0.3) // টেক্সটের ওপাটি কম-বেশি হয়ে লাইট নেভার ইফেক্ট দিবে
+                                    .tracking(4) // প্রতিটি অক্ষরের মাঝে স্পেস বা গ্যাপ
+                                    .opacity(isGlowing ? 1.0 : 0.2) // সাদা লাইটের মতো জ্বলবে ও নিভবে
+                                    .shadow(color: .white.opacity(0.8), radius: isGlowing ? 10 : 2) // গ্লো ইফেক্ট
                                     .onAppear {
-                                        // অ্যাপ ওপেন হওয়ামাত্রই ইনফিনিট লুপে লাইট জ্বলবে ও নিভবে (০.৮ সেকেন্ড পর পর)
-                                        withAnimation(Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                        // স্ক্রিন চালু হওয়ামাত্র অটোমেটিক লুপ অ্যানিমেশন শুরু হবে (Duration: 0.8 সেকেন্ড)
+                                        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                                             isGlowing = true
                                         }
                                     }
@@ -151,10 +141,10 @@ jobs:
                                         }
                                     }
                             }
-                            .padding(.bottom, 40) // আইফোনের নিচের হোম-বার থেকে নিরাপদ দূরত্ব
+                            .padding(.bottom, 35) // ল্যান্ডস্কেপ স্ক্রিনের নিচের বর্ডার থেকে নিরাপদ দূরত্ব
                         }
                     } else {
-                        // --- স্ক্রিন ২: সম্পূর্ণ আলাদা ব্ল্যাক স্ক্রিন ---
+                        // --- স্ক্রিন ২: সম্পূর্ণ আলাদা ব্ল্যাক স্ক্রিন ও গেম জোন ---
                         GameZoneView()
                     }
                 }
@@ -246,7 +236,7 @@ jobs:
               path: GameApp/Info.plist
         EOF
 
-    # 六. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
+    # ৬. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
     - name: Generate Xcode Project File
       run: xcodegen generate
 
