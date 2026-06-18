@@ -1,4 +1,4 @@
-name: Ultimate Auto iOS Builder
+name: Ultimate Auto iOS Landscape Builder
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # ২. এক্সকোড প্রজেক্ট তৈরি করার জন্য XcodeGen টুল ইনস্টল করা
+    # ২. এক্সকোড প্রজেক্ট তৈরি করার জন্য XcodeGenツール ইনস্টল করা
     - name: Install XcodeGen
       run: brew install xcodegen
 
@@ -100,7 +100,7 @@ jobs:
                                     }
                                 Spacer()
                             }
-                            .padding(.top, 60)
+                            .padding(.top, 30) // ল্যান্ডস্কেপ মোডের জন্য টপ প্যাডিং কিছুটা কমানো হয়েছে যাতে স্ক্রিনে সুন্দর দেখায়
                         }
                     } else {
                         Color.black
@@ -118,7 +118,7 @@ jobs:
         }
         EOF
 
-        # (ঘ) ফিজিক্যাল Info.plist ফাইল তৈরি (যাতে এক্সকোড ভ্যালিডেশন এরর না দেয়)
+        # (ঘ) ফিজিক্যাল Info.plist তৈরি করে অল-টাইম ল্যান্ডস্কেপ মোড লক করা
         cat << 'EOF' > GameApp/Info.plist
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -138,6 +138,18 @@ jobs:
             <true/>
             <key>UILaunchScreen</key>
             <dict/>
+            
+            <key>UISupportedInterfaceOrientations</key>
+            <array>
+                <string>UIInterfaceOrientationLandscapeLeft</string>
+                <string>UIInterfaceOrientationLandscapeRight</string>
+            </array>
+            
+            <key>UISupportedInterfaceOrientations~ipad</key>
+            <array>
+                <string>UIInterfaceOrientationLandscapeLeft</string>
+                <string>UIInterfaceOrientationLandscapeRight</string>
+            </array>
         </dict>
         </plist>
         EOF
@@ -200,5 +212,5 @@ jobs:
     - name: Upload Final IPA Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GameZone-App
+        name: GameZone-Landscape-App
         path: GameApp.ipa
