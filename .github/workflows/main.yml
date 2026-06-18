@@ -18,7 +18,7 @@ jobs:
     - name: Install XcodeGen
       run: brew install xcodegen
 
-    # ৩. ক্লাউডে ফোল্ডার তৈরি করে সব সুইফট কোড ফাইল একবারে রাইট (Write) করা
+    # ৩. ক্লাউডে ফোল্ডার তৈরি করে সব সুইফট কোড ফাইল এবং Info.plist একবারে রাইট (Write) করা
     - name: Create App Source Files
       run: |
         mkdir -p GameApp
@@ -118,6 +118,30 @@ jobs:
         }
         EOF
 
+        # (ঘ) ফিজিক্যাল Info.plist ফাইল তৈরি (যাতে এক্সকোড ভ্যালিডেশন এরর না দেয়)
+        cat << 'EOF' > GameApp/Info.plist
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleIdentifier</key>
+            <string>com.automation.GameApp</string>
+            <key>CFBundleExecutable</key>
+            <string>GameApp</string>
+            <key>CFBundleName</key>
+            <string>GameApp</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>LSRequiresIPhoneOS</key>
+            <true/>
+            <key>UILaunchScreen</key>
+            <dict/>
+        </dict>
+        </plist>
+        EOF
+
     # ৪. আপনার আপলোড করা ভিডিও ফাইলটি অ্যাপ ফোল্ডারে কপি করা
     - name: Move Video to App Folder
       run: |
@@ -142,9 +166,8 @@ jobs:
             platform: iOS
             deploymentTarget: "15.0"
             sources: [GameApp]
-            settings:
-              INFOPLIST_KEY_UILaunchScreen_Generation: true
-              INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+            info:
+              path: GameApp/Info.plist
         EOF
 
     # ৬. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
@@ -163,7 +186,8 @@ jobs:
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
-          PROVISIONING_PROFILE_SPECIFIER=""
+          PROVISIONING_PROFILE_SPECIFIER="" \
+          COMPILER_INDEX_STORE_ENABLE=NO
 
     # ৮. বিল্ড হওয়া ফাইলকে অফিসিয়াল Unsigned .ipa ফরম্যাটে প্যাকেজ করা
     - name: Package App into Unsigned IPA
