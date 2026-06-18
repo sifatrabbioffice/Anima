@@ -1,7 +1,7 @@
 name: Ultimate Auto iOS Landscape Builder
 
 on:
- # push:
+  push:
     branches: [ "main" ]
   workflow_dispatch:
 
