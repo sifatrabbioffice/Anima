@@ -18,7 +18,7 @@ jobs:
     - name: Install XcodeGen
       run: brew install xcodegen
 
-    # ৩. ক্লাউডে ফোল্ডার তৈরি করে মাল্টি-ভিডিও এবং এআই গেম ইঞ্জিন কোড রাইট করা
+    # ৩. ক্লাউডে ফোল্ডার তৈরি করে সম্পূর্ণ ট্রিপল-এ স্টোরি গেম ও মডুলার ইউআই কোড রাইট করা
     - name: Create App Source Files
       run: |
         mkdir -p GameApp
@@ -37,7 +37,7 @@ jobs:
         }
         EOF
 
-        # (খ) সাউন্ড এবং হ্যাপটিক্স (ভাইব্রেশন) ম্যানেজমেন্ট সিস্টেম
+        # (খ) সাউন্ড এবং হ্যাপটিক্স (ভাইব্রেশন) কন্ট্রোল ইঞ্জিন
         cat << 'EOF' > GameApp/SoundManager.swift
         import AVFoundation
         import UIKit
@@ -46,7 +46,6 @@ jobs:
             static let instance = SoundManager()
             var audioPlayer: AVAudioPlayer?
 
-            // ১. কাস্টম MP3 সাউন্ড প্লে করার ফাংশন
             func playClickSound() {
                 guard let path = Bundle.main.path(forResource: "click", ofType: "mp3") else { return }
                 let url = URL(fileURLWithPath: path)
@@ -59,7 +58,6 @@ jobs:
                 }
             }
             
-            // ২. রিয়েল হ্যাপটিক ফিডব্যাক (তীব্রতা অনুযায়ী ফোনের ভাইব্রেশন)
             func triggerHaptic(intensity: Double) {
                 guard intensity > 0 else { return }
                 let generator = UIImpactFeedbackGenerator(style: intensity > 0.6 ? .heavy : (intensity > 0.3 ? .medium : .light))
@@ -69,7 +67,7 @@ jobs:
         }
         EOF
 
-        # (গ) রিইউজেবল ভিডিও প্লেয়ার (যেকোনো ভিডিও নাম দিলে সেটি লুপে চালাবে এবং বন্ধ করবে)
+        # (গ) লুপে ভিডিও চালানোর ব্যাকগ্রাউন্ড রেন্ডারার
         cat << 'EOF' > GameApp/LoopingVideoPlayer.swift
         import SwiftUI
         import AVFoundation
@@ -78,40 +76,25 @@ jobs:
             @Binding var shouldPlay: Bool
             let videoName: String
             
-            class Coordinator: NSObject {
-                var player: AVPlayer?
-            }
-            
+            class Coordinator: NSObject { var player: AVPlayer? }
             func makeCoordinator() -> Coordinator { Coordinator() }
 
             func makeUIView(context: Context) -> UIView {
-                guard let path = Bundle.main.path(forResource: videoName, ofType: "mp4") else {
-                    return UIView()
-                }
-                
+                guard let path = Bundle.main.path(forResource: videoName, ofType: "mp4") else { return UIView() }
                 let url = URL(fileURLWithPath: path)
                 let player = AVPlayer(url: url)
                 context.coordinator.player = player
-                
                 let view = VideoPlayerUIView(player: player)
                 
                 NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { _ in
-                    if shouldPlay {
-                        player.seek(to: .zero)
-                        player.play()
-                    }
+                    if shouldPlay { player.seek(to: .zero); player.play() }
                 }
-                
                 if shouldPlay { player.play() }
                 return view
             }
             
             func updateUIView(_ uiView: UIView, context: Context) {
-                if shouldPlay {
-                    context.coordinator.player?.play()
-                } else {
-                    context.coordinator.player?.pause()
-                }
+                if shouldPlay { context.coordinator.player?.play() } else { context.coordinator.player?.pause() }
             }
         }
 
@@ -125,37 +108,43 @@ jobs:
                 self.playerLayer = playerLayer
             }
             required init?(coder: NSCoder) { fatalError() }
-            override func layoutSubviews() {
-                super.layoutSubviews()
-                playerLayer?.frame = self.bounds
-            }
+            override func layoutSubviews() { super.layoutSubviews() ; playerLayer?.frame = self.bounds }
         }
         EOF
 
-        # (ঘ) মূল ইউআই লেআউট এবং স্ক্রিন ট্রানজিশন কন্ট্রোলার (ContentView)
+        # (ঘ) অ্যাপের মূল স্ক্রিন কন্ট্রোলার (ContentView - ৩টি ফেইজ ম্যানেজমেন্ট)
         cat << 'EOF' > GameApp/ContentView.swift
         import SwiftUI
 
+        enum ActiveScreen { case home, hub, actualGame }
+
         struct ContentView: View {
-            @State private var isGameZoneActive = false
+            @State private var currentScreen: ActiveScreen = .home
             @State private var isGlowing = false
+            
+            // শেয়ার্ড গেম কনফিগারেশন স্টেট (যা অপশন প্যানেল থেকে নিয়ন্ত্রিত হবে)
+            @State var graphicsQuality = "Ultra"
+            @State var controllerType = "Joystick"
+            @State var soundVolume: Double = 0.8
+            @State var hapticIntensity: Double = 0.6
             
             var body: some View {
                 ZStack {
-                    if !isGameZoneActive {
-                        // --- স্ক্রিন ১: হোম স্ক্রিন (ভিডিও ১ + ব্লিংকিং টেক্সট) ---
+                    switch currentScreen {
+                    case .home:
+                        // --- স্ক্রিন ১: ইন্ট্রো স্ক্রিন (ভিডিও ১ + গ্লোয়িং টেক্সট) ---
                         ZStack {
-                            LoopingVideoPlayer(shouldPlay: .init(get: { !isGameZoneActive }, set: { _ in }), videoName: "background")
+                            LoopingVideoPlayer(shouldPlay: .init(get: { currentScreen == .home }, set: { _ in }), videoName: "background")
                                 .ignoresSafeArea()
                             
                             VStack {
                                 Spacer()
                                 Text("TAP TO SCREEN")
-                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .font(.system(size: 15, weight: .bold, design: .monospaced))
                                     .foregroundColor(.white)
-                                    .tracking(4)
+                                    .tracking(5)
                                     .opacity(isGlowing ? 1.0 : 0.15)
-                                    .shadow(color: .white.opacity(0.8), radius: isGlowing ? 12 : 1)
+                                    .shadow(color: .white.opacity(0.9), radius: isGlowing ? 12 : 2)
                                     .onAppear {
                                         withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                                             isGlowing = true
@@ -163,259 +152,462 @@ jobs:
                                     }
                                     .onTapGesture {
                                         SoundManager.instance.playClickSound()
-                                        withAnimation(.easeInOut(duration: 0.4)) {
-                                            isGameZoneActive = true
-                                        }
+                                        withAnimation(.easeInOut(duration: 0.4)) { currentScreen = .hub }
                                     }
                             }
                             .padding(.bottom, 35)
                         }
-                    } else {
-                        // --- স্ক্রিন ২: মেইন গেম জোন হাবে চলে যাওয়া ---
-                        GameZoneView(isGameZoneActive: $isGameZoneActive)
+                        
+                    case .hub:
+                        // --- স্ক্রিন ২: সুসংগঠিত পরিচ্ছন্ন গেম হাব মেনু ---
+                        GameHubView(
+                            currentScreen: $currentScreen,
+                            graphicsQuality: $graphicsQuality,
+                            controllerType: $controllerType,
+                            soundVolume: $soundVolume,
+                            hapticIntensity: $hapticIntensity
+                        )
+                        
+                    case .actualGame:
+                        // --- স্ক্রিন ৩: এআই জেনারেটেড হাই-গ্রাফিক্স অ্যাকশন-অ্যাডভেঞ্চার স্টোরি গেম ---
+                        EpicActionAdventureGameView(
+                            currentScreen: $currentScreen,
+                            graphicsQuality: graphicsQuality,
+                            controllerType: controllerType,
+                            soundVolume: soundVolume,
+                            hapticIntensity: hapticIntensity
+                        )
                     }
                 }
             }
         }
         EOF
 
-        # (ঙ) এআই ইন্টেলিজেন্স গেম হাব এবং সেটিংস ইউআই (GameZoneView)
-        cat << 'EOF' > GameApp/GameZoneView.swift
+        # (ঙ) স্ক্রিন ২: পরিচ্ছন্ন মেনু লেআউট এবং ডেডিকেটেড অপশন প্যানেল (GameHubView)
+        cat << 'EOF' > GameApp/GameHubView.swift
         import SwiftUI
 
-        struct GameZoneView: View {
-            @Binding var isGameZoneActive: Bool
-            @State private var isActualGameActive = false
-            
-            // গেম অপশন ও সেটিংসের জন্য স্টেট ভেরিয়েবল
-            @State private var graphicsQuality = "Ultra"
-            @State private var controllerType = "Joystick"
-            @State private var soundVolume = 0.8
-            @State private var hapticIntensity = 0.5
-            
-            let graphicsOptions = ["Low", "Medium", "High", "Ultra"]
-            let controllerOptions = ["Joystick", "D-Pad", "Tilt"]
-
-            var body: some View {
-                ZStack {
-                    // ২য় ভিডিও ব্যাকগ্রাউন্ড (গেম হাবের জন্য আলাদা)
-                    LoopingVideoPlayer(shouldPlay: .init(get: { !isActualGameActive && isGameZoneActive }, set: { _ in }), videoName: "game_background")
-                        .ignoresSafeArea()
-                    
-                    if !isActualGameActive {
-                        // --- স্ক্রিন ২ এর মেইন মেনু ইউআই ---
-                        ZStack {
-                            // বাম পাশে অপশন বাটনসমূহ (টপ লেফট এলাইনমেন্ট)
-                            VStack(alignment: .leading, spacing: 15) {
-                                Button(action: {
-                                    SoundManager.instance.playClickSound()
-                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
-                                    withAnimation(.spring()) { isActualGameActive = true }
-                                }) {
-                                    Text("START THE GAME")
-                                        .font(.system(size: 18, weight: .black, design: .monospaced))
-                                        .foregroundColor(.green)
-                                        .padding(.vertical, 10)
-                                        .padding(.horizontal, 20)
-                                        .background(Color.black.opacity(0.6))
-                                        .cornerRadius(8)
-                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.green, lineWidth: 1))
-                                }
-                                
-                                Button(action: {
-                                    SoundManager.instance.playClickSound()
-                                    withAnimation(.easeInOut(duration: 0.4)) {
-                                        isGameZoneActive = false // প্রথম পেজে ব্যাক করা
-                                    }
-                                }) {
-                                    Text("EXIT GAME")
-                                        .font(.system(size: 16, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.red)
-                                        .padding(.vertical, 8)
-                                        .padding(.horizontal, 15)
-                                        .background(Color.black.opacity(0.6))
-                                        .cornerRadius(8)
-                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red, lineWidth: 1))
-                                }
-                                Spacer()
-                            }
-                            .padding(.top, 30)
-                            .padding(.leading, 30)
-                            
-                            // ডান পাশে একটি কন্টেন্ট বক্স (গেমিং ভাইব বাড়ানোর জন্য)
-                            VStack {
-                                Spacer()
-                                Text("NEON ARCADE HUB v2.0")
-                                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.4))
-                            }
-                            .padding(.bottom, 20)
-                        }
-                    } else {
-                        // --- স্ক্রিন ৩: এআই জেনারেটেড ইন্টারেক্টিভ গেম এবং এডভান্সড সেটিংস ---
-                        ActualGameArenaView(
-                            isActualGameActive: $isActualGameActive,
-                            graphicsQuality: $graphicsQuality,
-                            controllerType: $controllerType,
-                            soundVolume: $soundVolume,
-                            hapticIntensity: $hapticIntensity,
-                            graphicsOptions: graphicsOptions,
-                            controllerOptions: controllerOptions
-                        )
-                    }
-                }
-            }
-        }
-
-        // এআই ইন্টেলিজেন্স দ্বারা তৈরি মূল গেম এরিয়া এবং সেটিংস কন্ট্রোল প্যানেল
-        struct ActualGameArenaView: View {
-            @Binding var isActualGameActive: Bool
+        struct GameHubView: View {
+            @Binding var currentScreen: ActiveScreen
             @Binding var graphicsQuality: String
             @Binding var controllerType: String
             @Binding var soundVolume: Double
             @Binding var hapticIntensity: Double
             
-            let graphicsOptions: [String]
-            let controllerOptions: [String]
+            @State private var showOptionsOverlay = false // অপশন প্যানেলের শো/হাইড স্টেট
             
-            @State private var score = 0
-            @State private var playerPosition: CGFloat = 0.0
+            var body: some View {
+                ZStack {
+                    // ব্যাকগ্রাউন্ড ভিডিও ২
+                    LoopingVideoPlayer(shouldPlay: .init(get: { currentScreen == .hub }, set: { _ in }), videoName: "game_background")
+                        .ignoresSafeArea()
+                    
+                    // মেনু বাটন লেআউট (মাঝামাঝি বাম পাশে অর্গানাইজড)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 20) {
+                            Text("NEON OVERLORD")
+                                .font(.system(size: 28, weight: .black, design: .monospaced))
+                                .foregroundColor(.white)
+                                .shadow(color: .cyan, radius: 5)
+                                .padding(.bottom, 10)
+                            
+                            // ১. স্টার্ট গেম (উপরে)
+                            Button(action: {
+                                SoundManager.instance.playClickSound()
+                                withAnimation(.spring()) { currentScreen = .actualGame }
+                            }) {
+                                HubMenuButton(text: "START GAME", color: .green)
+                            }
+                            
+                            // ২. অপশন (মাঝে - যা দিয়ে অডিও/হ্যাপটিক্স কন্ট্রোল হবে)
+                            Button(action: {
+                                SoundManager.instance.playClickSound()
+                                withAnimation(.easeInOut(duration: 0.3)) { showOptionsOverlay = true }
+                            }) {
+                                HubMenuButton(text: "OPTIONS", color: .cyan)
+                            }
+                            
+                            // ৩. এক্সিট গেম (নিচে - ১ম স্ক্রিনে ফেরত যাবে)
+                            Button(action: {
+                                SoundManager.instance.playClickSound()
+                                withAnimation(.easeInOut(duration: 0.4)) { currentScreen = .home }
+                            }) {
+                                HubMenuButton(text: "EXIT GAME", color: .red)
+                            }
+                        }
+                        .padding(.leading, 40)
+                        Spacer()
+                    }
+                    
+                    // ডেডিকেটেড অপশন ওভারলে শিট (পপআপ এফেক্ট)
+                    if showOptionsOverlay {
+                        Color.black.opacity(0.75)
+                            .ignoresSafeArea()
+                            .onTapGesture { withAnimation { showOptionsOverlay = false } }
+                        
+                        // সেটিংস কন্টেইনার বক্স
+                        VStack(spacing: 20) {
+                            HStack {
+                                Text("SYSTEM OPTIONS")
+                                    .font(.system(size: 20, weight: .black, design: .monospaced))
+                                    .foregroundColor(.cyan)
+                                Spacer()
+                                Button(action: { withAnimation { showOptionsOverlay = false } }) {
+                                    Image(systemName: "xmark.circle.fill").font(.title2).foregroundColor(.white)
+                                }
+                            }
+                            
+                            Divider().background(Color.white.opacity(0.3))
+                            
+                            // অডিও ভলিউম স্লাইডার
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("AUDIO VOLUME: \(Int(soundVolume * 100))%").font(.caption).foregroundColor(.gray)
+                                Slider(value: $soundVolume, in: 0...1).accentColor(.cyan)
+                            }
+                            
+                            // হ্যাপটিক্স স্লাইডার
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("HAPTIC INTENSITY: \(Int(hapticIntensity * 100))%").font(.caption).foregroundColor(.gray)
+                                Slider(value: $hapticIntensity, in: 0...1, onEditingChanged: { _ in
+                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                                }).accentColor(.purple)
+                            }
+                            
+                            // গ্রাফিক্স কোয়ালিটি পিকার
+                            HStack {
+                                Text("GRAPHICS:").font(.caption).foregroundColor(.gray)
+                                Picker("Graphics", selection: $graphicsQuality) {
+                                    ForEach(["Low", "Medium", "High", "Ultra"], id: \.self) { Text($0) }
+                                }.pickerStyle(SegmentedPickerStyle())
+                            }
+                            
+                            // কন্ট্রোলার পিকার
+                            HStack {
+                                Text("CONTROLS:").font(.caption).foregroundColor(.gray)
+                                Picker("Controls", selection: $controllerType) {
+                                    ForEach(["Joystick", "D-Pad", "Touch"], id: \.self) { Text($0) }
+                                }.pickerStyle(SegmentedPickerStyle())
+                            }
+                        }
+                        .padding(25)
+                        .frame(width: 450)
+                        .background(Color(white: 0.08))
+                        .cornerRadius(16)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.cyan.opacity(0.5), lineWidth: 1.5))
+                        .shadow(color: .cyan.opacity(0.3), radius: 20)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+            }
+        }
+
+        struct HubMenuButton: View {
+            let text: String
+            let color: Color
+            var body: some View {
+                Text(text)
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundColor(color)
+                    .frame(width: 180, alignment: .center)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.5))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.7), lineWidth: 1))
+            }
+        }
+        EOF
+
+        # (চ) স্ক্রিন ৩: আলতিমেট এআই অ্যাকশন-অ্যাডভেঞ্চার স্টোরি আরপিজি গেম (EpicActionAdventureGameView)
+        cat << 'EOF' > GameApp/EpicActionAdventureGameView.swift
+        import SwiftUI
+
+        struct EpicActionAdventureGameView: View {
+            @Binding var currentScreen: ActiveScreen
+            
+            // রিড-অনলি সেটিংস ডাটা
+            let graphicsQuality: String
+            let controllerType: String
+            let soundVolume: Double
+            let hapticIntensity: Double
+            
+            // গেম স্টেট ভেরিয়েবলস (RPG Core Engine)
+            @State private var playerHP: CGFloat = 100.0
+            @State private var bossHP: CGFloat = 150.0
+            @State private var playerXP = 0
+            @State private var playerLevel = 1
+            @State private var combatLog = "Chapter 1: The Neon Genesis. You enter the forgotten mainframe..."
+            @State private var currentObjective = "Objective: Infiltrate the Sector 7 Core Defenses."
+            @State private var bossName = "TITAN OVERLORD v9.0"
+            @State private var isPlayerDead = false
+            @State private var isVictory = false
+            @State private var isAttacking = false
             
             var body: some View {
                 HStack(spacing: 0) {
-                    // [বাম অংশ]: এডভান্সড গেমিং সেটিংস প্যানেল (HUD Style)
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            Text("SYSTEM SETTINGS")
-                                .font(.system(size: 18, weight: .black, design: .monospaced))
-                                .foregroundColor(.cyan)
-                            
-                            // ১. গ্রাফিক্স সেটিং
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("GRAPHICS QUALITY: \(graphicsQuality)")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                Picker("Graphics", selection: $graphicsQuality) {
-                                    ForEach(graphicsOptions, id: \.self) { Text($0) }
-                                }
-                                .pickerStyle(SegmentedPickerStyle())
-                            }
-                            
-                            // ২. কন্ট্রোলার টাইপ
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("CONTROLLER SYSTEM: \(controllerType)")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                Picker("Controller", selection: $controllerType) {
-                                    ForEach(controllerOptions, id: \.self) { Text($0) }
-                                }
-                                .pickerStyle(SegmentedPickerStyle())
-                            }
-                            
-                            // ৩. সাউন্ড ভলিউম স্লাইডার
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("AUDIO VOLUME: \(Int(soundVolume * 100))%")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                Slider(value: $soundVolume, in: 0...1)
-                                    .accentColor(.cyan)
-                            }
-                            
-                            // ৪. বাটন হ্যাপটিক্স স্লাইডার
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("BUTTON HAPTIC FEEDBACK: \(Int(hapticIntensity * 100))%")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                Slider(value: $hapticIntensity, in: 0...1, onEditingChanged: { _ in
-                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
-                                })
-                                .accentColor(.purple)
-                            }
-                            
-                            // মেইন হাবে ফিরে যাওয়ার বাটন
-                            Button(action: {
-                                SoundManager.instance.playClickSound()
-                                withAnimation(.spring()) { isActualGameActive = false }
-                            }) {
-                                Text("BACK TO HUB")
-                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.orange)
-                                    .padding(.vertical, 8)
-                                    .frame(maxWidth: .infinity)
-                                    .background(Color.orange.opacity(0.1))
-                                    .cornerRadius(6)
-                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.orange, lineWidth: 1))
-                            }
-                        }
-                        .padding(20)
-                    }
-                    .frame(width: 320)
-                    .background(Color.black.opacity(0.85))
-                    .overlay(Rectangle().frame(width: 1).foregroundColor(.cyan.opacity(0.3)), alignment: .trailing)
                     
-                    // [ডান অংশ]: লাইভ ইন্টারেক্টিভ স্পেস শুটিং মিনি গেম এরিয়া
-                    ZStack {
-                        Color.black.opacity(0.9).ignoresSafeArea()
+                    // [বাম পাশ]: সিনেমাটিক স্টোরি এবং মিশন ইনফরমেশন প্যানেল
+                    VStack(alignment: .leading, spacing: 12) {
+                        // গেম হেডার ও লেভেল ট্র্যাকার
+                        HStack {
+                            Text("LEVEL \(playerLevel) WARRIOR")
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                .foregroundColor(.yellow)
+                            Spacer()
+                            Text("XP: \(playerXP)/100")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.gray)
+                        }
                         
-                        VStack {
-                            HStack {
-                                Text("SCORE: \(score)")
-                                    .font(.system(size: 20, weight: .black, design: .monospaced))
-                                    .foregroundColor(.green)
-                                Spacer()
-                                Text("MODE: \(graphicsQuality.uppercased())")
-                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        Divider().background(Color.yellow.opacity(0.3))
+                        
+                        // ডাইনামিক স্টোরি টেলিং এরিয়া
+                        Text("STORY LOG")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.orange)
+                        
+                        ScrollView {
+                            Text(combatLog)
+                                .font(.system(size: 12, weight: .medium, design: .default))
+                                .foregroundColor(.white.opacity(0.85))
+                                .multilineTextAlignment(.leading)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .background(Color.white.opacity(0.03))
+                                .cornerRadius(6)
+                        }
+                        
+                        // কারেন্ট মিশন অবজেক্টিভ
+                        Text(currentObjective)
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.cyan)
+                            .padding(8)
+                            .background(Color.cyan.opacity(0.1))
+                            .cornerRadius(4)
+                        
+                        Spacer()
+                        
+                        // হাব-এ ফিরে যাওয়ার ইমার্জেন্সি বাটন
+                        Button(action: {
+                            SoundManager.instance.playClickSound()
+                            withAnimation { currentScreen = .hub }
+                        }) {
+                            Text("ABANDON MISSION")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(6)
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.red.opacity(0.4), lineWidth: 1))
+                        }
+                    }
+                    .padding(15)
+                    .frame(width: 280)
+                    .background(Color(white: 0.05))
+                    .overlay(Rectangle().frame(width: 1).foregroundColor(.white.opacity(0.1)), alignment: .trailing)
+                    
+                    // [ডান পাশ]: অ্যাকশন কম্ব্যাট এরিয়া এবং হাই-গ্রাফিক্স রেসপন্স ফিল্ড
+                    ZStack {
+                        // গ্রাফিক্স কোয়ালিটি অনুযায়ী ব্যাকগ্রাউন্ড গ্লো ইফেক্ট অ্যাডজাস্টমেন্ট
+                        Color.black.ignoresSafeArea()
+                        LinearGradient(colors: [.purple.opacity(graphicsQuality == "Ultra" ? 0.2 : 0.05), .black], startPoint: .top, endPoint: .bottom)
+                            .ignoresSafeArea()
+                        
+                        VStack(spacing: 15) {
+                            // বস লাইভ হেলথ বার (BOSS HUD)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("👹 \(bossName)")
+                                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                                        .foregroundColor(.red)
+                                    Spacer()
+                                    Text("\(Int(bossHP)) HP").font(.caption).foregroundColor(.gray)
+                                }
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule().fill(Color.red.opacity(0.2))
+                                        Capsule().fill(LinearGradient(colors: [.red, .orange], startPoint: .leading, endPoint: .trailing))
+                                            .frame(width: max(0, (bossHP / 150.0) * geo.size.width))
+                                    }
+                                }.frame(height: 10)
+                            }
+                            .padding(.horizontal, 20)
+                            
+                            Spacer()
+                            
+                            // গেম রেন্ডার এরিয়া (সিনেমাটিক ব্যাটল ক্যানভাস)
+                            HStack(spacing: 60) {
+                                // প্লেয়ার ক্যারেক্টার অবতার (অ্যানিমেটেড গ্লো)
+                                Text("⚔️")
+                                    .font(.system(size: 45))
+                                    .offset(x: isAttacking ? 30 : 0)
+                                    .shadow(color: .cyan, radius: isAttacking ? 15 : 2)
+                                
+                                Text("VS")
+                                    .font(.system(size: 16, weight: .black, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.3))
+                                
+                                // এনিমি ক্যারেক্টার অবতার
+                                Text("👾")
+                                    .font(.system(size: 50))
+                                    .scaleEffect(bossHP > 0 ? 1.0 : 0.1)
+                                    .rotationEffect(.degrees(bossHP > 0 ? 0 : 90))
+                                    .shadow(color: .red, radius: 10)
+                            }
+                            .animation(.spring(response: 0.3, dampingFraction: 0.5), value: isAttacking)
+                            
+                            Spacer()
+                            
+                            // প্লেয়ার হেলথ বার এবং কন্ট্রোল ড্যাশবোর্ড
+                            VStack(spacing: 10) {
+                                // প্লেয়ার হেলথ ট্র্যাকার
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text("💖 PLAYER HP")
+                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.cyan)
+                                        Spacer()
+                                        Text("\(Int(playerHP)) / 100").font(.caption).foregroundColor(.gray)
+                                    }
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            Capsule().fill(Color.cyan.opacity(0.2))
+                                            Capsule().fill(Color.cyan)
+                                                .frame(width: max(0, (playerHP / 100.0) * geo.size.width))
+                                        }
+                                    }.frame(height: 8)
+                                }
+                                .padding(.horizontal, 10)
+                                
+                                // রিয়েল-টাইম অ্যাকশন বাটন প্যানেল (কন্ট্রোলারের ধরন অনুযায়ী অপ্টিমাইজড)
+                                HStack(spacing: 20) {
+                                    // ১. হেভি লাইটনিং অ্যাটাক বাটন
+                                    Button(action: { executeAttack(type: "LIGHTNING BLADE", damage: 25, selfDamage: 10) }) {
+                                        ActionControlContainer(icon: "bolt.fill", label: "LIGHTNING", sub: "Cost 10 HP", color: .yellow)
+                                    }.disabled(isPlayerDead || isVictory)
+                                    
+                                    // ২. রেগুলার লেজার স্ট্রাইক বাটন
+                                    Button(action: { executeAttack(type: "PLASMA BLAST", damage: 15, selfDamage: 0) }) {
+                                        ActionControlContainer(icon: "waveform.path.ecg.radiowave.forward", label: "PLASMA FIRE", sub: "Safe Attack", color: .cyan)
+                                    }.disabled(isPlayerDead || isVictory)
+                                    
+                                    // ৩. লাইফ রিকভারি মেডিকিট বাটন
+                                    Button(action: {
+                                        SoundManager.instance.playClickSound()
+                                        SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                                        if playerHP < 100 {
+                                            playerHP = min(100, playerHP + 30)
+                                            combatLog = "► You injected a Nano-Heal stimulator. Recovered +30 HP.\n\n" + combatLog
+                                        }
+                                    }) {
+                                        ActionControlContainer(icon: "heart.text.square.fill", label: "NANO HEAL", sub: "+30 Health", color: .green)
+                                    }.disabled(isPlayerDead || isVictory)
+                                }
+                            }
+                            .padding(12)
+                            .background(Color.white.opacity(0.04))
+                            .cornerRadius(12)
+                        }
+                        .padding(.vertical, 15)
+                        .padding(.horizontal, 15)
+                        
+                        // গেম ওভার অথবা বিজয় বার্তা নোটিফিকেশন অ্যালার্ট উইন্ডো
+                        if isPlayerDead || isVictory {
+                            Color.black.opacity(0.9).ignoresSafeArea()
+                            VStack(spacing: 20) {
+                                Text(isVictory ? "MISSION ACCOMPLISHED" : "SYSTEM CRITICAL: YOU DIED")
+                                    .font(.system(size: 26, weight: .black, design: .monospaced))
+                                    .foregroundColor(isVictory ? .green : .red)
+                                    .shadow(color: isVictory ? .green : .red, radius: 10)
+                                
+                                Text(isVictory ? "The Core Overlord has been neutralized. Neo-Dhaka is safe." : "Your mainframe consciousness was terminated by Titan Overlord.")
+                                    .font(.subheadline)
                                     .foregroundColor(.gray)
-                            }
-                            .padding()
-                            
-                            Spacer()
-                            
-                            // ইন্টারেক্টিভ এআই এনিমি টার্গেট অবজেক্ট
-                            Circle()
-                                .fill(LinearGradient(colors: [.red, .orange], startPoint: .top, endPoint: .bottom))
-                                .frame(width: 50, height: 50)
-                                .offset(x: playerPosition, y: -20)
-                                .shadow(color: .red, radius: 10)
-                                .animation(.easeInOut(duration: 0.6), value: playerPosition)
-                            
-                            Spacer()
-                            
-                            // কাস্টম কন্ট্রোলার বাটন এরিয়া (যা হ্যাপটিক্স টেস্ট করতে সাহায্য করবে)
-                            HStack(spacing: 40) {
-                                Button(action: {
-                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
-                                    if playerPosition > -100 { playerPosition -= 40 }
-                                }) {
-                                    Image(systemName: "arrow.left.square.fill").font(.system(size: 40)).foregroundColor(.cyan)
-                                }
+                                    .multilineTextAlignment(.center)
                                 
-                                Button(action: {
-                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
-                                    score += 10
-                                    SoundManager.instance.playClickSound()
-                                }) {
-                                    Text("FIRE")
-                                        .font(.system(size: 16, weight: .black, design: .monospaced))
+                                Button(action: { resetGameEngine() }) {
+                                    Text("RESPAWN / RESTART")
+                                        .font(.system(size: 14, weight: .bold, design: .monospaced))
                                         .foregroundColor(.white)
-                                        .padding(.horizontal, 30)
-                                        .padding(.vertical, 12)
-                                        .background(Color.red)
-                                        .cornerRadius(10)
-                                        .shadow(color: .red.opacity(0.5), radius: 8)
-                                }
-                                
-                                Button(action: {
-                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
-                                    if playerPosition < 100 { playerPosition += 40 }
-                                }) {
-                                    Image(systemName: "arrow.right.square.fill").font(.system(size: 40)).foregroundColor(.cyan)
+                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, 25)
+                                        .background(isVictory ? Color.green : Color.red)
+                                        .cornerRadius(8)
                                 }
                             }
-                            .padding(.bottom, 20)
                         }
                     }
                 }
+            }
+            
+            // আরপিজি কম্ব্যাট প্রসেসিং লজিক (AI Combat System)
+            private var selectedGraphicsValue: Int {
+                switch graphicsQuality { case "Ultra": return 40; case "High": return 30; default: return 15; }
+            }
+            
+            private func executeAttack(type: String, damage: CGFloat, selfDamage: CGFloat) {
+                isAttacking = true
+                SoundManager.instance.playClickSound()
+                SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                
+                // ১. প্লেয়ারের আঘাত প্রসেস
+                bossHP = max(0, bossHP - damage)
+                playerHP = max(0, playerHP - selfDamage)
+                playerXP += Int(damage / 2)
+                
+                var logUpdate = "► You executed [\(type)] dealing \(Int(damage)) DMG to the Boss.\n"
+                if selfDamage > 0 { logUpdate += "⚠️ Recoil feedback cost you \(Int(selfDamage)) HP.\n" }
+                
+                // ২. লেভেল আপ ক্যালকুলেশন
+                if playerXP >= 100 {
+                    playerLevel += 1
+                    playerXP = 0
+                    logUpdate += "🌟 LEVEL UP! You are now Level \(playerLevel). ATK Power up.\n"
+                }
+                
+                // ৩. বসের কাউন্টার অ্যাটাক লজিক (এআই রেসপন্স)
+                if bossHP > 0 {
+                    let bossDamage = CGFloat.random(in: 10...22)
+                    playerHP = max(0, playerHP - bossDamage)
+                    logUpdate += "💥 \(bossName) retaliated with Cyber-Claw dealing \(Int(bossDamage)) DMG to you.\n"
+                } else {
+                    isVictory = true
+                    logUpdate += "🏆 VICTORY! You breached the main core defense database!\n"
+                }
+                
+                if playerHP <= 0 { isPlayerDead = true }
+                
+                combatLog = logUpdate + "\n" + combatLog
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { isAttacking = false }
+            }
+            
+            private func resetGameEngine() {
+                playerHP = 100.0
+                bossHP = 150.0
+                playerXP = 0
+                playerLevel = 1
+                isPlayerDead = false
+                isVictory = false
+                combatLog = "Mainframe rebooted. Mission re-initialized. Sector 7 defense is online..."
+            }
+        }
+
+        struct ActionControlContainer: View {
+            let icon: String
+            let label: String
+            let sub: String
+            let color: Color
+            var body: some View {
+                VStack(spacing: 4) {
+                    Image(systemName: icon).font(.system(size: 18)).foregroundColor(color)
+                    Text(label).font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundColor(.white)
+                    Text(sub).font(.system(size: 8)).foregroundColor(.gray)
+                }
+                .frame(width: 110, height: 55)
+                .background(Color.black.opacity(0.6))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.4), lineWidth: 1))
             }
         }
         EOF
@@ -454,8 +646,8 @@ jobs:
         </plist>
         EOF
 
-    # ৪. আপনার আপলোড করা ভিডিও এবং সাউন্ড ফাইলগুলো সঠিক উপায়ে ভেরিফাই এবং অ্যাপ ফোল্ডারে কপি করা
-    - name: Move All Assets to App Folder
+    # ৪. আপনার আপলোড করা সব এসেট ভেরিফাই করে প্রজেক্ট ফোল্ডারে কপি করা
+    - name: Move All Media Assets to App Folder
       run: |
         if [ -f "background.mp4" ] && [ -f "game_background.mp4" ] && [ -f "click.mp3" ]; then
           cp background.mp4 GameApp/
@@ -484,7 +676,7 @@ jobs:
               path: GameApp/Info.plist
         EOF
 
-    # ⑥. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
+    # ৬. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
     - name: Generate Xcode Project File
       run: xcodegen generate
 
@@ -514,5 +706,5 @@ jobs:
     - name: Upload Final IPA Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GameZone-AI-Edition-App
+        name: GameZone-AAA-Edition-App
         path: GameApp.ipa
