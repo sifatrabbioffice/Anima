@@ -10,7 +10,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    # ১. গিটহাব থেকে আপনার আপলোড করা ভিডিও এবং সাউন্ড ফাইল রানারে নিয়ে আসা
+    # ১. গিটহাব থেকে আপনার আপলোড করা সব মিডিয়া ফাইল রানারে নিয়ে আসা
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -18,7 +18,7 @@ jobs:
     - name: Install XcodeGen
       run: brew install xcodegen
 
-    # ৩. ক্লাউডে ফোল্ডার তৈরি করে স্লো-গ্লো এবং সাউন্ড সাপোর্টেড কোড রাইট করা
+    # ৩. ক্লাউডে ফোল্ডার তৈরি করে মাল্টি-ভিডিও এবং এআই গেম ইঞ্জিন কোড রাইট করা
     - name: Create App Source Files
       run: |
         mkdir -p GameApp
@@ -37,53 +37,55 @@ jobs:
         }
         EOF
 
-        # (খ) সাউন্ড প্লে করার জন্য প্রফেশনাল সাউন্ড ম্যানেজার ক্লাস
+        # (খ) সাউন্ড এবং হ্যাপটিক্স (ভাইব্রেশন) ম্যানেজমেন্ট সিস্টেম
         cat << 'EOF' > GameApp/SoundManager.swift
         import AVFoundation
+        import UIKit
 
         class SoundManager {
             static let instance = SoundManager()
             var audioPlayer: AVAudioPlayer?
 
+            // ১. কাস্টম MP3 সাউন্ড প্লে করার ফাংশন
             func playClickSound() {
-                // গিটহাবে আপলোড করা click.mp3 ফাইলটি প্রজেক্ট বান্ডেল থেকে খুঁজে বের করা
-                guard let path = Bundle.main.path(forResource: "click", ofType: "mp3") else {
-                    print("সাউন্ড ফাইলটি খুঁজে পাওয়া যায়নি!")
-                    return
-                }
-                
+                guard let path = Bundle.main.path(forResource: "click", ofType: "mp3") else { return }
                 let url = URL(fileURLWithPath: path)
-                
                 do {
                     audioPlayer = try AVAudioPlayer(contentsOf: url)
                     audioPlayer?.prepareToPlay()
                     audioPlayer?.play()
                 } catch {
-                    print("সাউন্ড প্লে করতে ত্রুটি হয়েছে: \(error.localizedDescription)")
+                    print("Sound error: \(error.localizedDescription)")
                 }
+            }
+            
+            // ২. রিয়েল হ্যাপটিক ফিডব্যাক (তীব্রতা অনুযায়ী ফোনের ভাইব্রেশন)
+            func triggerHaptic(intensity: Double) {
+                guard intensity > 0 else { return }
+                let generator = UIImpactFeedbackGenerator(style: intensity > 0.6 ? .heavy : (intensity > 0.3 ? .medium : .light))
+                generator.prepare()
+                generator.impactOccurred()
             }
         }
         EOF
 
-        # (গ) ভিডিও প্লেয়ার ফাইল (স্টপ লজিকসহ)
+        # (গ) রিইউজেবল ভিডিও প্লেয়ার (যেকোনো ভিডিও নাম দিলে সেটি লুপে চালাবে এবং বন্ধ করবে)
         cat << 'EOF' > GameApp/LoopingVideoPlayer.swift
         import SwiftUI
         import AVFoundation
 
         struct LoopingVideoPlayer: UIViewRepresentable {
-            @Binding var isGameZoneActive: Bool
+            @Binding var shouldPlay: Bool
+            let videoName: String
             
             class Coordinator: NSObject {
                 var player: AVPlayer?
             }
             
-            func makeCoordinator() -> Coordinator {
-                return Coordinator()
-            }
+            func makeCoordinator() -> Coordinator { Coordinator() }
 
             func makeUIView(context: Context) -> UIView {
-                guard let path = Bundle.main.path(forResource: "background", ofType: "mp4") else {
-                    print("ভিডিও ফাইলটি পাওয়া যায়নি!")
+                guard let path = Bundle.main.path(forResource: videoName, ofType: "mp4") else {
                     return UIView()
                 }
                 
@@ -94,27 +96,27 @@ jobs:
                 let view = VideoPlayerUIView(player: player)
                 
                 NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { _ in
-                    if !isGameZoneActive {
+                    if shouldPlay {
                         player.seek(to: .zero)
                         player.play()
                     }
                 }
                 
-                player.play()
+                if shouldPlay { player.play() }
                 return view
             }
             
             func updateUIView(_ uiView: UIView, context: Context) {
-                if isGameZoneActive {
+                if shouldPlay {
+                    context.coordinator.player?.play()
+                } else {
                     context.coordinator.player?.pause()
-                    context.coordinator.player = nil
                 }
             }
         }
 
         class VideoPlayerUIView: UIView {
             private var playerLayer: AVPlayerLayer?
-            
             init(player: AVPlayer) {
                 super.init(frame: .zero)
                 let playerLayer = AVPlayerLayer(player: player)
@@ -122,9 +124,7 @@ jobs:
                 self.layer.addSublayer(playerLayer)
                 self.playerLayer = playerLayer
             }
-            
             required init?(coder: NSCoder) { fatalError() }
-            
             override func layoutSubviews() {
                 super.layoutSubviews()
                 playerLayer?.frame = self.bounds
@@ -132,7 +132,7 @@ jobs:
         }
         EOF
 
-        # (ঘ) ইউজার ইন্টারফেস (স্লো গ্লো এবং সাউন্ড ট্রিগারসহ ContentView)
+        # (ঘ) মূল ইউআই লেআউট এবং স্ক্রিন ট্রানজিশন কন্ট্রোলার (ContentView)
         cat << 'EOF' > GameApp/ContentView.swift
         import SwiftUI
 
@@ -143,31 +143,27 @@ jobs:
             var body: some View {
                 ZStack {
                     if !isGameZoneActive {
+                        // --- স্ক্রিন ১: হোম স্ক্রিন (ভিডিও ১ + ব্লিংকিং টেক্সট) ---
                         ZStack {
-                            LoopingVideoPlayer(isGameZoneActive: $isGameZoneActive)
+                            LoopingVideoPlayer(shouldPlay: .init(get: { !isGameZoneActive }, set: { _ in }), videoName: "background")
                                 .ignoresSafeArea()
                             
                             VStack {
                                 Spacer()
-                                
                                 Text("TAP TO SCREEN")
                                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                                     .foregroundColor(.white)
                                     .tracking(4)
-                                    .opacity(isGlowing ? 1.0 : 0.15) // গ্লো ইফেক্ট আরও গভীর করা হয়েছে
+                                    .opacity(isGlowing ? 1.0 : 0.15)
                                     .shadow(color: .white.opacity(0.8), radius: isGlowing ? 12 : 1)
                                     .onAppear {
-                                        // অ্যানিমেশন ডিউরেশন ০.৮ থেকে বাড়িয়ে ১.৮ সেকেন্ড করা হয়েছে (অনেক স্লো ও স্মুথ হবে)
                                         withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                                             isGlowing = true
                                         }
                                     }
                                     .onTapGesture {
-                                        // ১. টাচ করার সাথে সাথে কাস্টম mp3 সাউন্ড প্লে হবে
                                         SoundManager.instance.playClickSound()
-                                        
-                                        // ২. সামান্য ট্রানজিশন অ্যানিমেশন দিয়ে ২য় স্ক্রিনে যাবে
-                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                        withAnimation(.easeInOut(duration: 0.4)) {
                                             isGameZoneActive = true
                                         }
                                     }
@@ -175,36 +171,256 @@ jobs:
                             .padding(.bottom, 35)
                         }
                     } else {
-                        GameZoneView()
+                        // --- স্ক্রিন ২: মেইন গেম জোন হাবে চলে যাওয়া ---
+                        GameZoneView(isGameZoneActive: $isGameZoneActive)
+                    }
+                }
+            }
+        }
+        EOF
+
+        # (ঙ) এআই ইন্টেলিজেন্স গেম হাব এবং সেটিংস ইউআই (GameZoneView)
+        cat << 'EOF' > GameApp/GameZoneView.swift
+        import SwiftUI
+
+        struct GameZoneView: View {
+            @Binding var isGameZoneActive: Bool
+            @State private var isActualGameActive = false
+            
+            // গেম অপশন ও সেটিংসের জন্য স্টেট ভেরিয়েবল
+            @State private var graphicsQuality = "Ultra"
+            @State private var controllerType = "Joystick"
+            @State private var soundVolume = 0.8
+            @State private var hapticIntensity = 0.5
+            
+            let graphicsOptions = ["Low", "Medium", "High", "Ultra"]
+            let controllerOptions = ["Joystick", "D-Pad", "Tilt"]
+
+            var body: some View {
+                ZStack {
+                    // ২য় ভিডিও ব্যাকগ্রাউন্ড (গেম হাবের জন্য আলাদা)
+                    LoopingVideoPlayer(shouldPlay: .init(get: { !isActualGameActive && isGameZoneActive }, set: { _ in }), videoName: "game_background")
+                        .ignoresSafeArea()
+                    
+                    if !isActualGameActive {
+                        // --- স্ক্রিন ২ এর মেইন মেনু ইউআই ---
+                        ZStack {
+                            // বাম পাশে অপশন বাটনসমূহ (টপ লেফট এলাইনমেন্ট)
+                            VStack(alignment: .leading, spacing: 15) {
+                                Button(action: {
+                                    SoundManager.instance.playClickSound()
+                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                                    withAnimation(.spring()) { isActualGameActive = true }
+                                }) {
+                                    Text("START THE GAME")
+                                        .font(.system(size: 18, weight: .black, design: .monospaced))
+                                        .foregroundColor(.green)
+                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, 20)
+                                        .background(Color.black.opacity(0.6))
+                                        .cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.green, lineWidth: 1))
+                                }
+                                
+                                Button(action: {
+                                    SoundManager.instance.playClickSound()
+                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                        isGameZoneActive = false // প্রথম পেজে ব্যাক করা
+                                    }
+                                }) {
+                                    Text("EXIT GAME")
+                                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.red)
+                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, 15)
+                                        .background(Color.black.opacity(0.6))
+                                        .cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red, lineWidth: 1))
+                                }
+                                Spacer()
+                            }
+                            .padding(.top, 30)
+                            .padding(.leading, 30)
+                            
+                            // ডান পাশে একটি কন্টেন্ট বক্স (গেমিং ভাইব বাড়ানোর জন্য)
+                            VStack {
+                                Spacer()
+                                Text("NEON ARCADE HUB v2.0")
+                                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                            .padding(.bottom, 20)
+                        }
+                    } else {
+                        // --- স্ক্রিন ৩: এআই জেনারেটেড ইন্টারেক্টিভ গেম এবং এডভান্সড সেটিংস ---
+                        ActualGameArenaView(
+                            isActualGameActive: $isActualGameActive,
+                            graphicsQuality: $graphicsQuality,
+                            controllerType: $controllerType,
+                            soundVolume: $soundVolume,
+                            hapticIntensity: $hapticIntensity,
+                            graphicsOptions: graphicsOptions,
+                            controllerOptions: controllerOptions
+                        )
                     }
                 }
             }
         }
 
-        struct GameZoneView: View {
+        // এআই ইন্টেলিজেন্স দ্বারা তৈরি মূল গেম এরিয়া এবং সেটিংস কন্ট্রোল প্যানেল
+        struct ActualGameArenaView: View {
+            @Binding var isActualGameActive: Bool
+            @Binding var graphicsQuality: String
+            @Binding var controllerType: String
+            @Binding var soundVolume: Double
+            @Binding var hapticIntensity: Double
+            
+            let graphicsOptions: [String]
+            let controllerOptions: [String]
+            
+            @State private var score = 0
+            @State private var playerPosition: CGFloat = 0.0
+            
             var body: some View {
-                Color.black
-                    .ignoresSafeArea()
-                    .overlay(
-                        VStack(spacing: 25) {
-                            Text("Welcome to Your Game Zone")
-                                .font(.system(size: 32, weight: .black, design: .monospaced))
-                                .foregroundColor(.green)
-                                .multilineTextAlignment(.center)
+                HStack(spacing: 0) {
+                    // [বাম অংশ]: এডভান্সড গেমিং সেটিংস প্যানেল (HUD Style)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            Text("SYSTEM SETTINGS")
+                                .font(.system(size: 18, weight: .black, design: .monospaced))
+                                .foregroundColor(.cyan)
                             
-                            Text("[ আপনার অন্যান্য ফাংশনাল কাজ এবং কোড এখানে যুক্ত হবে ]")
-                                .font(.system(size: 16, weight: .medium, design: .default))
-                                .foregroundColor(.gray)
-                                .padding()
-                                .background(Color.white.opacity(0.05))
-                                .cornerRadius(8)
+                            // ১. গ্রাফিক্স সেটিং
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("GRAPHICS QUALITY: \(graphicsQuality)")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                Picker("Graphics", selection: $graphicsQuality) {
+                                    ForEach(graphicsOptions, id: \.self) { Text($0) }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                            }
+                            
+                            // ২. কন্ট্রোলার টাইপ
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("CONTROLLER SYSTEM: \(controllerType)")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                Picker("Controller", selection: $controllerType) {
+                                    ForEach(controllerOptions, id: \.self) { Text($0) }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                            }
+                            
+                            // ৩. সাউন্ড ভলিউম স্লাইডার
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("AUDIO VOLUME: \(Int(soundVolume * 100))%")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                Slider(value: $soundVolume, in: 0...1)
+                                    .accentColor(.cyan)
+                            }
+                            
+                            // ৪. বাটন হ্যাপটিক্স স্লাইডার
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("BUTTON HAPTIC FEEDBACK: \(Int(hapticIntensity * 100))%")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                Slider(value: $hapticIntensity, in: 0...1, onEditingChanged: { _ in
+                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                                })
+                                .accentColor(.purple)
+                            }
+                            
+                            // মেইন হাবে ফিরে যাওয়ার বাটন
+                            Button(action: {
+                                SoundManager.instance.playClickSound()
+                                withAnimation(.spring()) { isActualGameActive = false }
+                            }) {
+                                Text("BACK TO HUB")
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.orange)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity)
+                                    .background(Color.orange.opacity(0.1))
+                                    .cornerRadius(6)
+                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.orange, lineWidth: 1))
+                            }
                         }
-                    )
+                        .padding(20)
+                    }
+                    .frame(width: 320)
+                    .background(Color.black.opacity(0.85))
+                    .overlay(Rectangle().frame(width: 1).foregroundColor(.cyan.opacity(0.3)), alignment: .trailing)
+                    
+                    // [ডান অংশ]: লাইভ ইন্টারেক্টিভ স্পেস শুটিং মিনি গেম এরিয়া
+                    ZStack {
+                        Color.black.opacity(0.9).ignoresSafeArea()
+                        
+                        VStack {
+                            HStack {
+                                Text("SCORE: \(score)")
+                                    .font(.system(size: 20, weight: .black, design: .monospaced))
+                                    .foregroundColor(.green)
+                                Spacer()
+                                Text("MODE: \(graphicsQuality.uppercased())")
+                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.gray)
+                            }
+                            .padding()
+                            
+                            Spacer()
+                            
+                            // ইন্টারেক্টিভ এআই এনিমি টার্গেট অবজেক্ট
+                            Circle()
+                                .fill(LinearGradient(colors: [.red, .orange], startPoint: .top, endPoint: .bottom))
+                                .frame(width: 50, height: 50)
+                                .offset(x: playerPosition, y: -20)
+                                .shadow(color: .red, radius: 10)
+                                .animation(.easeInOut(duration: 0.6), value: playerPosition)
+                            
+                            Spacer()
+                            
+                            // কাস্টম কন্ট্রোলার বাটন এরিয়া (যা হ্যাপটিক্স টেস্ট করতে সাহায্য করবে)
+                            HStack(spacing: 40) {
+                                Button(action: {
+                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                                    if playerPosition > -100 { playerPosition -= 40 }
+                                }) {
+                                    Image(systemName: "arrow.left.square.fill").font(.system(size: 40)).foregroundColor(.cyan)
+                                }
+                                
+                                Button(action: {
+                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                                    score += 10
+                                    SoundManager.instance.playClickSound()
+                                }) {
+                                    Text("FIRE")
+                                        .font(.system(size: 16, weight: .black, design: .monospaced))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 30)
+                                        .padding(.vertical, 12)
+                                        .background(Color.red)
+                                        .cornerRadius(10)
+                                        .shadow(color: .red.opacity(0.5), radius: 8)
+                                }
+                                
+                                Button(action: {
+                                    SoundManager.instance.triggerHaptic(intensity: hapticIntensity)
+                                    if playerPosition < 100 { playerPosition += 40 }
+                                }) {
+                                    Image(systemName: "arrow.right.square.fill").font(.system(size: 40)).foregroundColor(.cyan)
+                                }
+                            }
+                            .padding(.bottom, 20)
+                        }
+                    }
+                }
             }
         }
         EOF
 
-        # (ঙ) ল্যান্ডস্কেপ লকড Info.plist তৈরি
+        # (ছ) ল্যান্ডস্কেপ লকড Info.plist তৈরি
         cat << 'EOF' > GameApp/Info.plist
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -238,15 +454,16 @@ jobs:
         </plist>
         EOF
 
-    # ৪. আপনার আপলোড করা ভিডিও এবং সাউন্ড ফাইল অ্যাপ ফোল্ডারে কপি করা
-    - name: Move Assets to App Folder
+    # ৪. আপনার আপলোড করা ভিডিও এবং সাউন্ড ফাইলগুলো সঠিক উপায়ে ভেরিফাই এবং অ্যাপ ফোল্ডারে কপি করা
+    - name: Move All Assets to App Folder
       run: |
-        if [ -f "background.mp4" ] && [ -f "click.mp3" ]; then
+        if [ -f "background.mp4" ] && [ -f "game_background.mp4" ] && [ -f "click.mp3" ]; then
           cp background.mp4 GameApp/
+          cp game_background.mp4 GameApp/
           cp click.mp3 GameApp/
-          echo "ভিডিও এবং সাউন্ড ফাইল সফলভাবে অ্যাপে যুক্ত করা হয়েছে।"
+          echo "সবগুলো মিডিয়া এবং অডিও এসেট সফলভাবে লোড হয়েছে।"
         else
-          echo "ERROR: background.mp4 অথবা click.mp3 ফাইলটি মেইন ফোল্ডারে পাওয়া যায়নি!"
+          echo "ERROR: background.mp4, game_background.mp4 অথবা click.mp3 ফাইল মিসিং আছে!"
           exit 1
         fi
 
@@ -267,7 +484,7 @@ jobs:
               path: GameApp/Info.plist
         EOF
 
-    # ৬. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
+    # ⑥. রানারের ভেতরে স্বয়ংক্রিয়ভাবে .xcodeproj ফাইল জেনারেট করা
     - name: Generate Xcode Project File
       run: xcodegen generate
 
@@ -297,5 +514,5 @@ jobs:
     - name: Upload Final IPA Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GameZone-Landscape-App
+        name: GameZone-AI-Edition-App
         path: GameApp.ipa
